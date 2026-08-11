@@ -4,14 +4,14 @@ export default defineConfig({
   test: {
     globals: false,
     environment: 'node',
-    include: ['shared/src/**/*.test.ts', 'api/src/**/*.test.ts'],
+    include: ['shared/src/**/*.test.ts', 'api/src/**/*.test.ts', 'web/src/**/*.test.ts'],
     // Integration tests need Azurite running and live in their own config, so
     // that this suite stays fast and deterministic. `npm run verify` runs both.
     exclude: ['**/node_modules/**', '**/dist/**', '**/*.integration.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
-      include: ['shared/src/**/*.ts', 'api/src/**/*.ts'],
+      include: ['shared/src/**/*.ts', 'api/src/**/*.ts', 'web/src/lib/**/*.ts'],
       exclude: [
         '**/*.test.ts',
         '**/*.d.ts',

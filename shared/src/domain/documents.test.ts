@@ -55,6 +55,11 @@ describe('toTaskSummary', () => {
     expect(summary.percent).toBe(40);
   });
 
+  it('includes a Kommentarer preview for the list row', () => {
+    const summary = toTaskSummary(document(mainTask({ comments: 'Se ritning 4b' })));
+    expect(summary.commentsPreview).toBe('Se ritning 4b');
+  });
+
   it('carries the ETag when one is supplied', () => {
     expect(toTaskSummary(document(), '"etag-9"').etag).toBe('"etag-9"');
     expect(toTaskSummary(document()).etag).toBeUndefined();

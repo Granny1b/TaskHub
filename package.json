@@ -28,7 +28,8 @@
     "typecheck": "tsc --build --force",
     "verify": "node scripts/verify.mjs",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "stage:api": "node scripts/stageApi.mjs"
+    "stage:api": "node scripts/stageApi.mjs",
+    "dev:local": "node scripts/devApi.mjs --seed"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

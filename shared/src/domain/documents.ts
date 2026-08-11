@@ -2,6 +2,7 @@ import { countChildren, getPercent, isTaskComplete } from './completion.js';
 import type { MutationContext } from './context.js';
 import { totalAttachmentCount, createTaskNode } from './tree.js';
 import { ORDER_STEP } from './ordering.js';
+import { COMMENTS_PREVIEW_LENGTH } from './constants.js';
 import { CURRENT_SCHEMA_VERSION, type TaskDocument, type TaskSummary } from './schemas.js';
 
 /**
@@ -48,6 +49,7 @@ export function toTaskSummary(document: TaskDocument, etag?: string): TaskSummar
     id: document.id,
     listId: document.listId,
     title: root.title,
+    commentsPreview: root.comments.slice(0, COMMENTS_PREVIEW_LENGTH),
     date: root.date,
     isComplete: isTaskComplete(root),
     percent: getPercent(root) ?? (isTaskComplete(root) ? 100 : 0),

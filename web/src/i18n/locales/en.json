@@ -25,7 +25,8 @@
     "openSubtasks_other": "{{count}} open subtasks",
     "subtaskProgress": "{{done}}/{{total}}",
     "delete": "Delete",
-    "restore": "Restore"
+    "restore": "Restore",
+    "subtasks": "Subtasks"
   },
   "percent": {
     "auto": "auto",

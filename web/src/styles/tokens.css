@@ -70,8 +70,16 @@
   --accent-contrast: #ffffff;
   --focus-ring: var(--accent-700);
 
-  /* 8px spacing grid */
-  --spacing: 0.5rem;
+  /*
+    Spacing.
+
+    Do NOT set Tailwind's `--spacing` here. In v4 it is the *base multiplier*
+    for every numeric size utility, not a grid step: setting it to 0.5rem makes
+    `w-60` 480px and `h-12` 96px, silently doubling the entire layout.
+
+    The 8px grid the spec asks for comes from using even-numbered utilities
+    (p-2 = 8px, p-4 = 16px, gap-6 = 24px) on the default 0.25rem base.
+  */
 
   /* Radii */
   --radius-sm: 0.25rem;

@@ -14,6 +14,8 @@ export default tseslint.config(
     ignores: [
       '**/node_modules/**',
       '**/dist/**',
+      '**/dist-types/**',
+      'api-deploy/**',
       '**/coverage/**',
       '**/*.tsbuildinfo',
       'web/public/**',
@@ -138,6 +140,7 @@ export default tseslint.config(
         console: 'readonly',
         process: 'readonly',
         URL: 'readonly',
+        Buffer: 'readonly',
       },
     },
   },

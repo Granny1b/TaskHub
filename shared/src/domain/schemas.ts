@@ -223,6 +223,8 @@ export const taskSummarySchema = z.object({
   id: ulidSchema,
   listId: ulidSchema.nullable(),
   title: z.string(),
+  /** First COMMENTS_PREVIEW_LENGTH characters of Kommentarer, for the list row. */
+  commentsPreview: z.string(),
   date: isoDateSchema,
   isComplete: z.boolean(),
   percent: z.number().int().min(PERCENT_MIN).max(PERCENT_MAX),

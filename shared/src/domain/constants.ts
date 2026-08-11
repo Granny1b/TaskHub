@@ -26,6 +26,17 @@ export const TITLE_MAX_LENGTH = 200;
 /** `Kommentarer` is free multi-line text. Capped only to keep a blob sane. */
 export const COMMENTS_MAX_LENGTH = 10_000;
 
+/**
+ * How much of Kommentarer is denormalised into blob metadata for the list view.
+ *
+ * The spec is emphatic that Kommentarer must be visible in the list row, and
+ * the list is built from a blob listing without opening documents (ADR-0002).
+ * So a preview has to travel in metadata. 200 characters is far more than a
+ * truncated single-line cell can show, and metadata has an 8 KB budget that
+ * this uses about 5% of.
+ */
+export const COMMENTS_PREVIEW_LENGTH = 200;
+
 /** User-definable list names (the left-panel grouping level). */
 export const LIST_NAME_MIN_LENGTH = 1;
 export const LIST_NAME_MAX_LENGTH = 60;

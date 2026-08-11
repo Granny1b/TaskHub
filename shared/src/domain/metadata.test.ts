@@ -98,6 +98,31 @@ describe('fromBlobMetadata', () => {
     expect(summary?.etag).toBe('"etag-1"');
   });
 
+  it('carries a Kommentarer preview, so the list row is populated by the listing alone', () => {
+    const doc = document(mainTask({ comments: 'Se ritning 4b. Reservdelar beställda vecka 32.' }));
+    const summary = fromBlobMetadata(doc.id, toBlobMetadata(doc));
+    expect(summary?.commentsPreview).toBe('Se ritning 4b. Reservdelar beställda vecka 32.');
+  });
+
+  it('truncates a long Kommentarer rather than blowing the metadata budget', () => {
+    const doc = document(mainTask({ comments: 'x'.repeat(5000) }));
+    const summary = fromBlobMetadata(doc.id, toBlobMetadata(doc));
+    expect(summary?.commentsPreview).toHaveLength(200);
+  });
+
+  it('stays well inside the 8 KB metadata limit at maximum field lengths', () => {
+    const doc = document(
+      mainTask({ title: 'å'.repeat(200), comments: 'ö'.repeat(5000) }),
+      '01JGZ0000000000000000ZZZ2',
+    );
+    const metadata = toBlobMetadata(doc);
+    const bytes = Object.entries(metadata).reduce(
+      (total, [key, value]) => total + key.length + value.length,
+      0,
+    );
+    expect(bytes).toBeLessThan(8 * 1024);
+  });
+
   it('preserves a Swedish title through the round trip', () => {
     const doc = document(mainTask({ title: 'Kontrollera oljenivå — spindel' }));
     expect(fromBlobMetadata(doc.id, toBlobMetadata(doc))?.title).toBe(

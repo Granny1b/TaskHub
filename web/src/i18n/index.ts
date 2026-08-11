@@ -21,6 +21,15 @@ export const DEFAULT_LANGUAGE: SupportedLanguage = 'sv';
 
 const STORAGE_KEY = 'taskhub.language';
 
+/**
+ * Swedish unless the user has explicitly chosen otherwise.
+ *
+ * Deliberately *not* browser-locale detection. This is a Swedish shop floor
+ * replacing a Swedish workbook; someone whose Windows is set to English would
+ * otherwise get an English UI for a tool where every column name comes from the
+ * Swedish original. English is one click away in the language switcher, and
+ * that choice is remembered.
+ */
 function detectLanguage(): SupportedLanguage {
   if (typeof window === 'undefined') return DEFAULT_LANGUAGE;
 
@@ -29,8 +38,7 @@ function detectLanguage(): SupportedLanguage {
     return stored as SupportedLanguage;
   }
 
-  const browser = window.navigator.language.slice(0, 2).toLowerCase();
-  return browser === 'en' ? 'en' : DEFAULT_LANGUAGE;
+  return DEFAULT_LANGUAGE;
 }
 
 export function setLanguage(language: SupportedLanguage): void {

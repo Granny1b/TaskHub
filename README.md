@@ -53,20 +53,21 @@ tests. It is the single command that says whether the repository is healthy.
 
 ### Everyday scripts
 
-| Script                      | Does                                               |
-| --------------------------- | -------------------------------------------------- |
-| `npm run verify`            | All gates. Use this before committing.             |
-| `npm run dev`               | Vite dev server on :5173, proxying `/api` to :7071 |
-| `npm run dev:api`           | Azure Functions host (needs Core Tools + Azurite)  |
-| `npm test`                  | Vitest unit tests once                             |
-| `npm run test:integration`  | Integration tests against Azurite (auto-started)   |
-| `npm run test:watch`        | Vitest in watch mode                               |
-| `npm run test:coverage`     | Coverage, with the domain threshold enforced       |
-| `npm run lint` / `lint:fix` | ESLint, including architectural boundary rules     |
-| `npm run typecheck`         | `tsc --build` across all three packages            |
-| `npm run format`            | Prettier write                                     |
-| `npm run clean`             | Remove build output (cross-platform)               |
-| `npm run stage:api`         | Assemble the self-contained API deployment folder  |
+| Script                      | Does                                                 |
+| --------------------------- | ---------------------------------------------------- |
+| `npm run verify`            | All gates. Use this before committing.               |
+| `npm run dev`               | Vite dev server on :5173, proxying `/api` to :7071   |
+| `npm run dev:api`           | Azure Functions host (needs Core Tools + Azurite)    |
+| `npm test`                  | Vitest unit tests once                               |
+| `npm run test:integration`  | Integration tests against Azurite (auto-started)     |
+| `npm run test:watch`        | Vitest in watch mode                                 |
+| `npm run test:coverage`     | Coverage, with the domain threshold enforced         |
+| `npm run lint` / `lint:fix` | ESLint, including architectural boundary rules       |
+| `npm run typecheck`         | `tsc --build` across all three packages              |
+| `npm run format`            | Prettier write                                       |
+| `npm run clean`             | Remove build output (cross-platform)                 |
+| `npm run stage:api`         | Assemble the self-contained API deployment folder    |
+| `npm run dev:local`         | Built UI + in-memory API on one port, with demo data |
 
 ### Local API against the blob emulator
 

@@ -1,4 +1,5 @@
 import { countChildren, getPercent, isTaskComplete } from './completion.js';
+import { COMMENTS_PREVIEW_LENGTH } from './constants.js';
 import { isValidIsoDate } from './dates.js';
 import { totalAttachmentCount } from './tree.js';
 import type { TaskDocument, TaskSummary } from './schemas.js';
@@ -28,6 +29,7 @@ import type { TaskDocument, TaskSummary } from './schemas.js';
 /** Metadata names must be valid C# identifiers; Azure lowercases them on read. */
 export const TASK_METADATA_KEYS = {
   titleB64: 'titleb64',
+  commentsB64: 'commentsb64',
   date: 'taskdate',
   isComplete: 'iscomplete',
   percent: 'percent',
@@ -81,6 +83,9 @@ export function toBlobMetadata(document: TaskDocument): Record<string, string> {
 
   const metadata: Record<string, string> = {
     [TASK_METADATA_KEYS.titleB64]: encodeMetadataText(root.title),
+    [TASK_METADATA_KEYS.commentsB64]: encodeMetadataText(
+      root.comments.slice(0, COMMENTS_PREVIEW_LENGTH),
+    ),
     [TASK_METADATA_KEYS.date]: root.date,
     [TASK_METADATA_KEYS.isComplete]: String(isTaskComplete(root)),
     [TASK_METADATA_KEYS.percent]: String(percent),
@@ -150,8 +155,11 @@ export function fromBlobMetadata(
   if (!isValidIsoDate(date)) return null;
 
   let title: string;
+  let commentsPreview = '';
   try {
     title = decodeMetadataText(encodedTitle);
+    const encodedComments = metadata[TASK_METADATA_KEYS.commentsB64];
+    if (encodedComments !== undefined) commentsPreview = decodeMetadataText(encodedComments);
   } catch {
     return null;
   }
@@ -163,6 +171,7 @@ export function fromBlobMetadata(
     id,
     listId: listId ?? null,
     title,
+    commentsPreview,
     date,
     isComplete: metadata[TASK_METADATA_KEYS.isComplete] === 'true',
     percent: readInt(metadata, TASK_METADATA_KEYS.percent, 0),

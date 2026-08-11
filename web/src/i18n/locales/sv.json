@@ -25,7 +25,8 @@
     "openSubtasks_other": "{{count}} öppna deluppgifter",
     "subtaskProgress": "{{done}}/{{total}}",
     "delete": "Ta bort",
-    "restore": "Återställ"
+    "restore": "Återställ",
+    "subtasks": "Deluppgifter"
   },
   "percent": {
     "auto": "auto",

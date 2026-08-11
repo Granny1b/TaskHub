@@ -478,3 +478,88 @@ materialised into `node_modules` — and deploys with `skip_app_build` and
   every handler registers, which fails loudly if a dependency stops resolving.
 - `npm run verify` runs again inside the deploy workflow rather than trusting a
   CI run on a possibly older commit.
+
+---
+
+## ADR-0023 — Never set Tailwind's `--spacing` token
+
+**Date:** 2026-08-11 · **Status:** accepted · **Found by:** screenshot review
+
+**Context.** The spec asks for an 8px spacing grid. `tokens.css` set
+`--spacing: 0.5rem` to express that. In Tailwind v4 `--spacing` is not a grid
+step — it is the **base multiplier for every numeric size utility**. Setting it
+to 0.5rem silently doubled the entire layout: `w-60` became 480px instead of
+240px, `h-12` became 96px, and the task grid overflowed its container so the
+right-hand columns were clipped and the header drew over the detail pane.
+
+Nothing failed. It compiled, tested green, and rendered — just wrong. It was
+found by taking a screenshot and measuring the sidebar.
+
+**Decision.** Leave `--spacing` at Tailwind's default. The 8px grid comes from
+using even-numbered utilities (`p-2` = 8px, `p-4` = 16px) on the 0.25rem base.
+`tokens.css` carries a comment saying why the token is absent, so nobody
+"fixes" it back.
+
+**Consequences.** A reminder that a type-checked, fully-tested UI can still be
+visually broken. Screenshots at each target width are part of verifying a UI
+phase, not a nicety.
+
+---
+
+## ADR-0024 — Mobile rows are cards, not a narrowed grid
+
+**Date:** 2026-08-11 · **Status:** accepted
+
+**Context.** The spec requires the list to work at 360px. The desktop row is a
+seven-column grid whose fixed columns alone exceed 360px before any content.
+
+**Decision.** Below `md`, a row renders as a card: a 44px checkbox, the title,
+and one meta line carrying date, percent, subtask progress and attachment
+count. The column header is hidden, since it would label nothing.
+
+**Consequences.** This is the same reasoning the spec applies to the layout as
+a whole ("no three-column squeeze") pushed down to the row. Verified at 360px.
+
+---
+
+## ADR-0025 — Kommentarer is denormalised into blob metadata
+
+**Date:** 2026-08-11 · **Status:** accepted
+
+**Context.** §10 is emphatic that Kommentarer is a primary field and must be
+visible in the list row. But the list view is built from a blob listing without
+opening documents (ADR-0002), and the metadata projection carried no comments —
+so the column rendered empty until a row was expanded.
+
+**Decision.** Denormalise the first 200 characters into blob metadata as
+`commentsb64`, and expose it on `TaskSummary` as `commentsPreview`.
+
+**Consequences.**
+
+- The list view still costs one request, and the column is populated.
+- A test asserts that maximum-length title and comments together stay well
+  inside the 8 KB metadata budget.
+- The preview is truncated; the detail pane and the expanded row show the full
+  text from the document.
+
+---
+
+## ADR-0026 — A local dev server, separate from the Functions host
+
+**Date:** 2026-08-11 · **Status:** accepted
+
+**Context.** Running the real API locally needs the Azure Functions Core Tools
+and Azurite. That is right for API work but a heavy prerequisite for UI work,
+and it makes verifying the frontend in a container awkward.
+
+**Decision.** `scripts/devApi.mjs` serves the same `TaskService`, `ListService`
+and `InMemoryTaskRepository` over plain `node:http`, plus the built bundle as
+static files. `--seed` loads demo data exercising the awkward cases: a derived
+50%, and a task completed at 40%.
+
+**Consequences.**
+
+- The UI can be run, screenshotted and verified with one command.
+- It duplicates **routing only** — no business logic. The real handlers remain
+  the deployed path and are covered by the Azurite integration tests.
+- It has no authentication and is not for production; the file says so.
