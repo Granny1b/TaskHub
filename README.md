@@ -21,7 +21,7 @@ UI.
 | --------------------- | ----------- |
 | 0 — Foundations       | Complete    |
 | 1 — Domain + storage  | Complete    |
-| 2 — API + concurrency | Not started |
+| 2 — API + concurrency | Complete    |
 | 3 — Infrastructure    | Not started |
 | 4 — Core UI           | Not started |
 | 5 — Attachments       | Not started |
@@ -58,7 +58,8 @@ tests. It is the single command that says whether the repository is healthy.
 | `npm run verify`            | All gates. Use this before committing.             |
 | `npm run dev`               | Vite dev server on :5173, proxying `/api` to :7071 |
 | `npm run dev:api`           | Azure Functions host (needs Core Tools + Azurite)  |
-| `npm test`                  | Vitest once                                        |
+| `npm test`                  | Vitest unit tests once                             |
+| `npm run test:integration`  | Integration tests against Azurite (auto-started)   |
 | `npm run test:watch`        | Vitest in watch mode                               |
 | `npm run test:coverage`     | Coverage, with the domain threshold enforced       |
 | `npm run lint` / `lint:fix` | ESLint, including architectural boundary rules     |
@@ -109,11 +110,17 @@ question — no component inspects the completion union directly.
 
 ## Testing
 
-228 tests, with the domain layer above 95% statement coverage against an
-enforced 80% threshold. The suite is the executable form of the specification:
+290 unit tests plus 19 integration tests against Azurite, with the domain layer
+above 95% statement coverage against an enforced 80% threshold. The suite is the executable form of the specification:
 `completion.test.ts` in particular states each rule from §4 as its own case,
 including the four invariants the build order calls out by name.
 
+The integration suite starts Azurite itself on a non-default port, so it needs
+no setup and will not collide with an emulator you already have running. It is
+what proves the concurrency claim: two writers racing on the same task produce
+exactly one 409 and no lost update.
+
 ```powershell
 npm run test:coverage
+npm run test:integration
 ```

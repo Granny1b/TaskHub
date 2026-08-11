@@ -1,0 +1,139 @@
+import {
+  BlobSASPermissions,
+  SASProtocol,
+  StorageSharedKeyCredential,
+  generateBlobSASQueryParameters,
+  type ContainerClient,
+} from '@azure/storage-blob';
+import { DomainError } from '@taskhub/shared';
+import type {
+  BlobFacts,
+  IAttachmentStorage,
+  ReadGrant,
+  UploadGrant,
+} from './IAttachmentStorage.js';
+
+/** Write grants are deliberately short: long enough to start, not to hoard. */
+export const UPLOAD_SAS_MINUTES = 5;
+/** Read grants are cached in memory by the client and re-fetched on expiry. */
+export const READ_SAS_MINUTES = 15;
+
+/**
+ * Clock skew allowance. Without it, a client whose clock runs a minute fast
+ * gets `AuthenticationFailed` on a SAS that has not started yet — a confusing
+ * failure that looks like a permissions bug.
+ */
+const CLOCK_SKEW_MINUTES = 5;
+
+export class BlobAttachmentStorage implements IAttachmentStorage {
+  constructor(
+    private readonly container: ContainerClient,
+    private readonly credential: StorageSharedKeyCredential,
+  ) {}
+
+  async createUploadGrant(input: { blobPath: string; contentType: string }): Promise<UploadGrant> {
+    const now = new Date();
+    const expiresOn = new Date(now.getTime() + UPLOAD_SAS_MINUTES * 60_000);
+
+    const sas = generateBlobSASQueryParameters(
+      {
+        containerName: this.container.containerName,
+        blobName: input.blobPath,
+        // Create + write only. No read, no delete, no list.
+        permissions: BlobSASPermissions.parse('cw'),
+        startsOn: new Date(now.getTime() - CLOCK_SKEW_MINUTES * 60_000),
+        expiresOn,
+        protocol: SASProtocol.Https,
+        contentType: input.contentType,
+      },
+      this.credential,
+    ).toString();
+
+    const blobClient = this.container.getBlockBlobClient(input.blobPath);
+    return {
+      uploadUrl: `${blobClient.url}?${sas}`,
+      blobPath: input.blobPath,
+      expiresOn: expiresOn.toISOString(),
+    };
+  }
+
+  async createReadGrant(blobPath: string): Promise<ReadGrant> {
+    const now = new Date();
+    const expiresOn = new Date(now.getTime() + READ_SAS_MINUTES * 60_000);
+
+    const sas = generateBlobSASQueryParameters(
+      {
+        containerName: this.container.containerName,
+        blobName: blobPath,
+        permissions: BlobSASPermissions.parse('r'),
+        startsOn: new Date(now.getTime() - CLOCK_SKEW_MINUTES * 60_000),
+        expiresOn,
+        protocol: SASProtocol.Https,
+      },
+      this.credential,
+    ).toString();
+
+    const blobClient = this.container.getBlockBlobClient(blobPath);
+    return { url: `${blobClient.url}?${sas}`, expiresOn: expiresOn.toISOString() };
+  }
+
+  async statBlob(blobPath: string): Promise<BlobFacts> {
+    const blob = this.container.getBlockBlobClient(blobPath);
+    try {
+      const properties = await blob.getProperties();
+      return { exists: true, sizeBytes: properties.contentLength ?? 0 };
+    } catch {
+      return { exists: false, sizeBytes: 0 };
+    }
+  }
+
+  async deletePrefix(prefix: string): Promise<number> {
+    let deleted = 0;
+    for await (const blob of this.container.listBlobsFlat({ prefix })) {
+      await this.container.getBlockBlobClient(blob.name).deleteIfExists();
+      deleted += 1;
+    }
+    return deleted;
+  }
+}
+
+/**
+ * Build the shared-key credential SAS signing requires.
+ *
+ * SAS signing needs either an account key or a user delegation key. v1 runs on
+ * a connection string (ADR-0010), so the account key is what we have. If the
+ * app later moves to managed identity, this is where `getUserDelegationKey`
+ * would replace it — the interface above does not change.
+ */
+export function credentialFromConnectionString(
+  connectionString: string,
+): StorageSharedKeyCredential {
+  const parts = new Map<string, string>();
+  for (const segment of connectionString.split(';')) {
+    const index = segment.indexOf('=');
+    if (index === -1) continue;
+    parts.set(segment.slice(0, index).trim(), segment.slice(index + 1).trim());
+  }
+
+  // Azurite's shorthand. Expanding it here means local development needs no
+  // special-casing anywhere else.
+  if (connectionString.includes('UseDevelopmentStorage=true')) {
+    return new StorageSharedKeyCredential(
+      'devstoreaccount1',
+      'Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==',
+    );
+  }
+
+  const accountName = parts.get('AccountName');
+  const accountKey = parts.get('AccountKey');
+
+  if (accountName === undefined || accountKey === undefined) {
+    throw new DomainError(
+      'invalid_operation',
+      'Cannot sign attachment SAS: the storage connection string has no AccountName/AccountKey. ' +
+        'SAS signing needs a shared key (see ADR-0010).',
+    );
+  }
+
+  return new StorageSharedKeyCredential(accountName, accountKey);
+}

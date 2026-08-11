@@ -48,18 +48,22 @@ export default tseslint.config(
    * api/src/repositories/ change.
    * ------------------------------------------------------------------ */
   {
-    files: ['api/src/domain/**/*.ts', 'api/src/functions/**/*.ts', 'shared/src/**/*.ts'],
+    files: ['api/src/domain/**/*.ts', 'api/src/functions/**/*.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
         {
           patterns: [
             {
-              group: ['@azure/storage-blob', '@azure/identity', '@azure/*'],
+              // Storage SDKs only. `@azure/functions` is the hosting framework
+              // and HTTP handlers must import it — it is not a storage
+              // dependency and banning it would ban having an API at all.
+              group: ['@azure/storage-*', '@azure/identity', '@azure/cosmos', '@azure/data-tables'],
               message:
-                'Azure SDK imports are confined to api/src/repositories/ and api/src/lib/. ' +
-                'Depend on ITaskRepository instead — this is the seam that lets a real ' +
-                'database replace Blob Storage without touching domain or HTTP code. See ADR-0003.',
+                'Storage SDK imports are confined to api/src/repositories/ and api/src/lib/. ' +
+                'Depend on ITaskRepository / IAttachmentStorage instead — this is the seam ' +
+                'that lets a real database replace Blob Storage without touching domain or ' +
+                'HTTP code. See ADR-0003.',
             },
           ],
         },

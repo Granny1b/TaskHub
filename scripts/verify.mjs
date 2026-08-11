@@ -12,6 +12,7 @@ const steps = [
   ['lint', 'ESLint (includes architectural boundary rules)'],
   ['typecheck', 'TypeScript strict build'],
   ['test', 'Vitest unit tests'],
+  ['test:integration', 'Integration tests against Azurite'],
 ];
 
 const isWindows = process.platform === 'win32';

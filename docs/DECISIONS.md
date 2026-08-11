@@ -333,3 +333,72 @@ removing unsafe characters, so `Ritning-Färdig.pdf` becomes
 `Content-Disposition`. The original filename is preserved verbatim in the
 document's `fileName` field, so the UI shows what the user uploaded — only the
 storage path is transliterated.
+
+---
+
+## ADR-0017 — Free tier accepted; the allowlist replaces tenant restriction
+
+**Date:** 2026-08-11 · **Status:** accepted · **Source:** user decision, `VERIFICATION.md` §1
+
+**Context.** Verification found that the SWA Free plan cannot restrict the
+built-in Entra ID provider to a single tenant — that requires a custom OIDC
+provider, which is Standard-only at roughly $9/month. The user reviewed the
+tradeoff and chose to stay on Free.
+
+**Decision.** Authentication is open by platform constraint; **authorisation is
+enforced in the application**. `withAuth` gates every route on an allowlist of
+Entra object ids and email domains held in application settings.
+
+**Consequences.**
+
+- Any Microsoft account can reach the login page and complete it. Non-allowlisted
+  principals get `403` from every route including `/api/me`, and the rejection is
+  logged with the object id, because on this tier that log line is the signal
+  that someone outside the organisation found the app.
+- **The policy fails closed.** An unconfigured allowlist in a deployed
+  environment denies everyone rather than admitting everyone. A misconfigured
+  deploy should lock the owner out and be noticed, not silently publish the
+  company's task list. Local development opts out explicitly via
+  `AZURE_FUNCTIONS_ENVIRONMENT=Development`.
+- Domain matching uses the part after the last `@`, so `modig.se@evil.com` does
+  not match and `notmodig.se` does not match by suffix. Both are tested.
+- Moving to Standard later removes the need for this but not the code: `can()`
+  remains the place per-list and per-owner rules will grow.
+
+---
+
+## ADR-0018 — Request schemas are separate from document schemas
+
+**Date:** 2026-08-11 · **Status:** accepted
+
+**Context.** It is tempting to validate incoming payloads with the persisted
+document schema, since it already exists.
+
+**Decision.** `api/src/domain/requests.ts` defines narrower schemas for every
+endpoint. A client may send `title`, `date`, `comments`; it may not send `id`,
+`order`, `createdBy`, `updatedAt` or `completion`.
+
+**Consequences.** A client cannot forge an audit trail or pick its own ids. The
+cost is a second set of schemas to maintain, which is the correct trade at a
+trust boundary — the alternative accepts every server-owned field by default and
+fails silently when a new one is added.
+
+---
+
+## ADR-0019 — A conditional write against a missing blob surfaces as 409, not 404
+
+**Date:** 2026-08-11 · **Status:** accepted · **Discovered by:** integration test
+
+**Context.** Azure treats `If-Match` against a blob that does not exist as a
+_precondition failure_ (412), not an absence (404) — an ETag cannot match
+something that is not there. An integration test asserting 404 failed and
+revealed the real semantics.
+
+**Decision.** Let it surface as `concurrency_conflict` (409) rather than probing
+for existence first.
+
+**Consequences.** The client's existing conflict flow handles it correctly:
+refetch, discover the 404, tell the user the task is gone. Probing before every
+write would add a round trip to the common path to improve a rare one, and would
+race anyway. Only reachable via an admin purge or the Phase-2 cleanup job, since
+no v1 user action hard-deletes.
