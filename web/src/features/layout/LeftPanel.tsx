@@ -1,10 +1,35 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type Announcements,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import type { TaskList } from '@taskhub/shared';
 import { IconButton } from '../../components/Button.js';
-import { InboxIcon, ListIcon, PlusIcon, TrashIcon } from '../../components/icons.js';
+import { GripIcon, InboxIcon, ListIcon, PlusIcon, TrashIcon } from '../../components/icons.js';
 import { Skeleton } from '../../components/Skeleton.js';
-import { useCreateList, useDeleteList, useLists, useRenameList } from '../../lib/queries.js';
+import {
+  useCreateList,
+  useDeleteList,
+  useLists,
+  useRenameList,
+  useReorderLists,
+} from '../../lib/queries.js';
 import { AccountButton } from '../settings/AccountButton.js';
 
 export type ListSelection = { kind: 'all' } | { kind: 'ungrouped' } | { kind: 'list'; id: string };
@@ -16,6 +41,8 @@ interface LeftPanelProps {
   onToggleCollapsed: () => void;
   /** Mobile drawers close on navigation; the desktop rail does not. */
   onNavigate?: () => void;
+  /** Touch: the drag grip cannot wait for a hover that will never come. */
+  touch?: boolean;
 }
 
 /**
@@ -34,12 +61,14 @@ export function LeftPanel({
   collapsed,
   onToggleCollapsed,
   onNavigate,
+  touch = false,
 }: LeftPanelProps) {
   const { t } = useTranslation();
   const lists = useLists();
   const createList = useCreateList();
   const renameList = useRenameList();
   const deleteList = useDeleteList();
+  const reorderLists = useReorderLists();
 
   const [creating, setCreating] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -51,6 +80,49 @@ export function LeftPanel({
     onSelect(next);
     onNavigate?.();
   };
+
+  /*
+    Drag to reorder the lists.
+
+    Simpler than the task list in one way that matters: every list lives in the
+    same blob under one ETag (ADR-0004), so a move is a single conditional write
+    that either lands whole or not at all. There is no renumbering across blobs
+    to be careful about here.
+  */
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = (event: DragEndEvent): void => {
+    const { active, over } = event;
+    if (over === null || active.id === over.id) return;
+
+    const ids = items.map((list) => list.id);
+    const toIndex = ids.indexOf(String(over.id));
+    if (toIndex === -1) return;
+
+    reorderLists.mutate({ movedId: String(active.id), toIndex, etag });
+  };
+
+  const announcements = useMemo<Announcements>(() => {
+    const nameOf = (id: string | number): string =>
+      items.find((list) => list.id === String(id))?.name ?? String(id);
+
+    return {
+      onDragStart: ({ active }) => t('dnd.picked', { name: nameOf(active.id) }),
+      onDragOver: ({ active, over }) =>
+        over === null || over.id === active.id
+          ? undefined
+          : t('dnd.over', { name: nameOf(over.id) }),
+      onDragEnd: ({ active, over }) =>
+        over === null
+          ? t('dnd.cancelled', { name: nameOf(active.id) })
+          : t('dnd.dropped', { name: nameOf(active.id) }),
+      onDragCancel: ({ active }) => t('dnd.cancelled', { name: nameOf(active.id) }),
+    };
+  }, [t, items]);
 
   return (
     <nav
@@ -115,29 +187,46 @@ export function LeftPanel({
           </div>
         ) : null}
 
-        {items.map((list) =>
-          renamingId === list.id ? (
-            <ListNameInput
-              key={list.id}
-              initial={list.name}
-              onCancel={() => setRenamingId(null)}
-              onSubmit={(name) => {
-                renameList.mutate({ id: list.id, name, etag });
-                setRenamingId(null);
-              }}
-            />
-          ) : (
-            <ListRow
-              key={list.id}
-              list={list}
-              collapsed={collapsed}
-              active={selection.kind === 'list' && selection.id === list.id}
-              onClick={() => choose({ kind: 'list', id: list.id })}
-              onRename={() => setRenamingId(list.id)}
-              onDelete={() => deleteList.mutate({ id: list.id, etag })}
-            />
-          ),
-        )}
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          modifiers={[restrictToVerticalAxis]}
+          accessibility={{
+            announcements,
+            screenReaderInstructions: { draggable: t('dnd.instructions') },
+          }}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={items.map((list) => list.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            {items.map((list) =>
+              renamingId === list.id ? (
+                <ListNameInput
+                  key={list.id}
+                  initial={list.name}
+                  onCancel={() => setRenamingId(null)}
+                  onSubmit={(name) => {
+                    renameList.mutate({ id: list.id, name, etag });
+                    setRenamingId(null);
+                  }}
+                />
+              ) : (
+                <ListRow
+                  key={list.id}
+                  list={list}
+                  collapsed={collapsed}
+                  touch={touch}
+                  active={selection.kind === 'list' && selection.id === list.id}
+                  onClick={() => choose({ kind: 'list', id: list.id })}
+                  onRename={() => setRenamingId(list.id)}
+                  onDelete={() => deleteList.mutate({ id: list.id, etag })}
+                />
+              ),
+            )}
+          </SortableContext>
+        </DndContext>
 
         {creating ? (
           <ListNameInput
@@ -173,6 +262,10 @@ function PanelItem({
   collapsed,
   onClick,
   trailing,
+  grip,
+  gripAlways,
+  containerRef,
+  style,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -180,9 +273,29 @@ function PanelItem({
   collapsed: boolean;
   onClick: () => void;
   trailing?: React.ReactNode;
+  /**
+   * A drag handle laid over the row's icon rather than beside it. A 240px panel
+   * has no width to spare for a column that is empty most of the time, and the
+   * icon is decorative — swapping it for the grip on hover costs nothing and
+   * shifts nothing.
+   */
+  grip?: React.ReactNode;
+  /** True on touch, where the grip cannot wait for a hover to reveal it. */
+  gripAlways?: boolean;
+  containerRef?: (node: HTMLElement | null) => void;
+  style?: React.CSSProperties;
 }) {
+  // The two occupy the same 16px box, so exactly one of them may be visible at
+  // a time — otherwise a touch device draws the grip on top of the icon.
+  const iconVisibility =
+    grip === undefined
+      ? ''
+      : gripAlways === true
+        ? 'opacity-0'
+        : 'transition-opacity duration-150 group-hover:opacity-0';
+
   return (
-    <div className="group relative">
+    <div ref={containerRef} style={style} className="group relative">
       <button
         type="button"
         onClick={onClick}
@@ -194,9 +307,16 @@ function PanelItem({
             : 'text-content-muted hover:bg-surface-hover hover:text-content'
         } ${collapsed ? 'justify-center' : ''}`}
       >
-        <span className={active ? 'text-accent' : ''}>{icon}</span>
+        <span className={`${active ? 'text-accent' : ''} ${iconVisibility}`}>{icon}</span>
         {!collapsed ? <span className="truncate">{label}</span> : null}
       </button>
+
+      {/* Sits on top of the icon it replaces. Outside the button, because a
+          button cannot contain another button. */}
+      {grip !== undefined ? (
+        <span className="absolute left-2 top-1/2 -translate-y-1/2">{grip}</span>
+      ) : null}
+
       {!collapsed && trailing !== undefined ? (
         <span className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100">
           {trailing}
@@ -209,6 +329,7 @@ function PanelItem({
 function ListRow({
   list,
   collapsed,
+  touch,
   active,
   onClick,
   onRename,
@@ -216,12 +337,18 @@ function ListRow({
 }: {
   list: TaskList;
   collapsed: boolean;
+  touch: boolean;
   active: boolean;
   onClick: () => void;
   onRename: () => void;
   onDelete: () => void;
 }) {
   const { t } = useTranslation();
+
+  // The collapsed rail is a column of 16px icons with no labels. There is
+  // nowhere for a grip to live that is not the icon itself, and no way to tell
+  // what you are dragging, so reordering waits until the panel is open.
+  const sortable = useSortable({ id: list.id, disabled: collapsed });
 
   return (
     <PanelItem
@@ -230,6 +357,34 @@ function ListRow({
       active={active}
       collapsed={collapsed}
       onClick={onClick}
+      containerRef={sortable.setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(sortable.transform),
+        transition: sortable.transition,
+        ...(sortable.isDragging ? { opacity: 0.5, zIndex: 10, position: 'relative' } : {}),
+      }}
+      {...(collapsed
+        ? {}
+        : {
+            gripAlways: touch,
+            grip: (
+              <button
+                type="button"
+                ref={sortable.setActivatorNodeRef}
+                {...sortable.attributes}
+                {...sortable.listeners}
+                aria-label={t('dnd.handle', { name: list.name })}
+                title={t('dnd.handleShort')}
+                className={`flex h-4 w-4 cursor-grab touch-none items-center justify-center rounded text-content-muted transition-opacity duration-150 hover:text-content ${
+                  touch
+                    ? 'opacity-60'
+                    : 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100'
+                }`}
+              >
+                <GripIcon className="h-4 w-4" />
+              </button>
+            ),
+          })}
       trailing={
         <span className="flex items-center gap-0.5 bg-surface-raised">
           <IconButton label={t('lists.rename')} onClick={onRename}>

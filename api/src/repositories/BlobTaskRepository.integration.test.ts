@@ -1,5 +1,6 @@
 import { BlobServiceClient, type ContainerClient } from '@azure/storage-blob';
 import {
+  activeLists,
   addChild,
   createContext,
   createTaskDocument,
@@ -13,6 +14,7 @@ import {
   type TaskDocument,
 } from '@taskhub/shared';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { ListService } from '../domain/listService.js';
 import { TaskService } from '../domain/taskService.js';
 import { BlobTaskListRepository } from './BlobTaskListRepository.js';
 import { BlobTaskRepository } from './BlobTaskRepository.js';
@@ -410,6 +412,51 @@ describe('the lists aggregate', () => {
     const stale = createTaskList(loaded.document, { name: 'Andra' }, ctx());
     await listRepository.save(stale.document, loaded.etag);
     await expect(listRepository.save(stale.document, loaded.etag)).rejects.toMatchObject({
+      code: 'concurrency_conflict',
+    });
+  });
+
+  /**
+   * Reordering lists is one conditional write to one blob — the whole reason it
+   * needs none of the machinery main tasks do (ADR-0034). This proves that
+   * claim against real storage rather than against our model of it.
+   */
+  it('reorders in a single conditional write, and refuses a stale one', async () => {
+    const listRepository = new BlobTaskListRepository(container);
+    const service = new ListService(listRepository);
+
+    const before = await listRepository.get();
+    const first = await service.create({ name: 'Sortering A' }, before.etag, ctx());
+    await service.create({ name: 'Sortering B' }, first.etag, ctx());
+
+    const positions = (lists: readonly { name: string }[]) => ({
+      a: lists.findIndex((list) => list.name === 'Sortering A'),
+      b: lists.findIndex((list) => list.name === 'Sortering B'),
+    });
+
+    const current = await service.list();
+    const start = positions(current.lists);
+    expect(start.a).toBeLessThan(start.b);
+
+    const movedId = current.lists[start.b]?.id ?? '';
+    const moved = await service.reorder(
+      movedId,
+      // Index within the siblings once the moved list is taken out.
+      start.a,
+      current.etag,
+      ctx(),
+    );
+
+    const after = positions(moved.lists);
+    expect(after.b).toBeLessThan(after.a);
+
+    // And it stuck: read the blob back rather than trusting the response.
+    const reloaded = await listRepository.get();
+    const persisted = positions(activeLists(reloaded.document));
+    expect(persisted.b).toBeLessThan(persisted.a);
+
+    // The ETag the move consumed is now stale, and a second use of it loses.
+    await expect(service.reorder(movedId, 0, current.etag, ctx())).rejects.toMatchObject({
       code: 'concurrency_conflict',
     });
   });

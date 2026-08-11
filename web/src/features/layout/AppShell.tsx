@@ -135,6 +135,7 @@ export function AppShell() {
               selection={selection}
               onSelect={setSelection}
               collapsed={false}
+              touch
               onToggleCollapsed={() => setDrawerOpen(false)}
               onNavigate={() => setDrawerOpen(false)}
             />

@@ -75,8 +75,9 @@ the wrong day.
 ### Manual order, in one paragraph
 
 Everything orderable carries a sparse float, so moving one item writes one
-number instead of renumbering its neighbours. Subtasks and lists live inside a
-single document, so a move there is one conditional write and cannot half-apply.
+number instead of renumbering its neighbours. Subtasks and the user-defined
+lists each live inside a single document, so a move there is one conditional
+write and cannot half-apply.
 Main tasks are separate blobs: `root.order` is the truth, `taskorder` in the blob
 metadata is what the listing sorts by, and the total order is
 `compareByOrderThenId` — the id tie-break is what keeps tasks written before

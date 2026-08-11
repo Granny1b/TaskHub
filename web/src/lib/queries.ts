@@ -507,12 +507,56 @@ export function useDeleteList() {
   });
 }
 
+interface ReorderListsVariables {
+  movedId: string;
+  toIndex: number;
+  etag: string;
+}
+
 export function useReorderLists() {
   const client = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ movedId, toIndex, etag }: { movedId: string; toIndex: number; etag: string }) =>
+    /**
+     * Optimistic, like the task drags: a list that springs back to where it was
+     * while the write is in flight reads as a drag that failed.
+     *
+     * Only the array is spliced, not the `order` values — the server owns those,
+     * and the response replaces this whole cache entry anyway.
+     */
+    onMutate: async (variables: ReorderListsVariables) => {
+      await client.cancelQueries({ queryKey: queryKeys.lists });
+
+      const previous = client.getQueryData<WithETag<TaskList[]>>(queryKeys.lists);
+      if (previous === undefined) return { previous: undefined };
+
+      const from = previous.data.findIndex((list) => list.id === variables.movedId);
+      if (from === -1) return { previous };
+
+      const without = [...previous.data.slice(0, from), ...previous.data.slice(from + 1)];
+      const to = Math.max(0, Math.min(without.length, variables.toIndex));
+      const moved = previous.data[from] as TaskList;
+
+      cacheLists(
+        client,
+        [...without.slice(0, to), moved, ...without.slice(to)],
+        // The ETag stays put: the optimistic order is a local guess, and the
+        // token still belongs to the version the server holds.
+        previous.etag,
+      );
+
+      return { previous };
+    },
+
+    onError: (_error, _variables, context) => {
+      if (context?.previous !== undefined) {
+        cacheLists(client, context.previous.data, context.previous.etag);
+      }
+    },
+
+    mutationFn: ({ movedId, toIndex, etag }: ReorderListsVariables) =>
       api.reorderLists({ movedId, toIndex }, etag),
+
     onSuccess: (saved) => {
       cacheLists(client, saved.data.lists, saved.etag);
     },

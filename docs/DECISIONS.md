@@ -817,6 +817,16 @@ anchor id survives that; an index does not.
 between lists, and every view is a subsequence of one order. Per-list ordering
 would need a position per list per task and an answer for "Alla uppgifter".
 
-**Not decided here.** Reordering the user-defined lists in the side panel. The
-API for it has existed since Phase 4 (`POST /api/lists/reorder`) and is
-unconnected to any UI.
+**The side panel needed none of this.** Reordering the user-defined lists uses
+the same sparse floats and the same dnd-kit wiring, but every list lives in one
+blob under one ETag (ADR-0004), so a move is a single conditional write that
+lands whole or not at all — `POST /api/lists/reorder`, unchanged since Phase 4.
+Two people reordering lists at the same time produce a 409, which is correct and
+rare. The complexity above is the price of tasks being separate blobs, not of
+drag-and-drop.
+
+One thing worth writing down about the panel: reordering is off in the collapsed
+icon rail. There is nowhere for a grip to live that is not the icon itself, and
+nothing on screen to say what you picked up. The grip replaces the list icon on
+hover when the panel is open — a 240px panel has no width for a column that is
+empty most of the time — and stays visible on touch, where no hover is coming.
