@@ -126,6 +126,13 @@ Attachments are keyed by task so deleting a task can prefix-delete its files.
 Nothing is ever hard-deleted on a user action in v1 — soft delete sets
 `deletedAt` and the `deleted` tag.
 
+**Nothing personal is stored server-side.** How someone likes to see their work
+— where subtasks appear, row density, whether the Kommentarer column is shown,
+column widths, theme, language — lives in `localStorage`, never on the task
+document (ADR-0033). Two people looking at the same task are allowed to disagree
+about its presentation, and a preference change should not be a blob write with
+an ETag and a possible conflict.
+
 ## Extension points
 
 These exist so future features do not require touching existing code:

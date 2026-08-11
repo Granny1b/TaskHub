@@ -702,3 +702,47 @@ illustration of why the number is the wrong target here.
 Practices, all of which meet the bar. Note the measurement was taken against the
 local dev server with gzip enabled to match what Static Web Apps serves; the
 real CDN should do slightly better, not worse.
+
+---
+
+## ADR-0033 — Personal preferences live in localStorage, not on the task
+
+**Date:** 2026-08-11 · **Status:** accepted
+
+**Context.** People asked to choose where subtasks appear: expanded under their
+parent in the list, as in the workbook, or only in the detail pane. Along with
+row density and whether the Kommentarer column is shown, that is a set of
+per-person view preferences the app now has to keep somewhere.
+
+**Options.**
+
+1. **On the task document.** Free — it rides along with data already being
+   written. But it makes one person's viewing habit part of a shared record: two
+   people opening the same task would fight over it, every preference change
+   would be a blob write with an ETag and a possible 409, and the audit trail
+   would fill with events that changed nothing about the work.
+2. **A per-user blob** (`preferences/{userId}.json`). Shared across a user's
+   devices, at the cost of one more blob per user, a read on every app start,
+   and a new repository, service and endpoint.
+3. **`localStorage`.** Instant, free, no request, no conflict. Does not follow
+   the user to another device.
+
+**Decision.** `localStorage`, keyed `taskhub.preferences`
+(`web/src/lib/preferences.ts`).
+
+**Rationale.** These are per-device settings as much as per-person ones: the
+density that suits a workshop tablet is not the density that suits a 27-inch
+desk monitor, so syncing them across devices is not obviously desirable. It also
+keeps the storage account holding only work, which is the whole reason the
+blob-only design stays inside the free grant. Column widths already work this
+way (`columns.ts`), so this is the existing convention, not a new one.
+
+**Consequences.** Preferences do not follow a user to a new browser or device;
+they fall back to the defaults, which are chosen to match the workbook. Option 2
+remains open if people ask for it — `readPreferences()`/`setPreferences()` are
+the only call sites, so the change would be behind that pair. Reads merge field
+by field against the defaults, so a preference added in a later release does not
+arrive as `undefined` for everyone with a stored blob; a test covers that case.
+
+**Not decided here.** Nothing about the preference is sent to the API, so no
+schema, endpoint or migration changes.

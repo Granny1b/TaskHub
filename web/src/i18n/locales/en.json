@@ -26,7 +26,8 @@
     "subtaskProgress": "{{done}}/{{total}}",
     "delete": "Delete",
     "restore": "Restore",
-    "subtasks": "Subtasks"
+    "subtasks": "Subtasks",
+    "openDetails": "Open task"
   },
   "percent": {
     "auto": "auto",
@@ -84,7 +85,29 @@
     "light": "Light",
     "dark": "Dark"
   },
+  "settings": {
+    "title": "Settings",
+    "open": "Open settings",
+    "account": "Account",
+    "language": "Language",
+    "subtasks": {
+      "title": "Where subtasks appear",
+      "inline": "Under the main task",
+      "inlineHint": "Subtasks expand in the list, just as in the workbook.",
+      "detail": "In the right-hand panel",
+      "detailHint": "One row per task in the list. Subtasks appear when you open the task."
+    },
+    "list": {
+      "title": "The list",
+      "showComments": "Show the Comments column",
+      "density": "Row height",
+      "compact": "Compact",
+      "comfortable": "Comfortable"
+    }
+  },
   "a11y": {
-    "skipToContent": "Skip to task list"
+    "skipToContent": "Skip to task list",
+    "collapsePanel": "Collapse the side panel",
+    "expandPanel": "Expand the side panel"
   }
 }

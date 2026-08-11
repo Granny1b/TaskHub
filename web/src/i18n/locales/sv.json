@@ -26,7 +26,8 @@
     "subtaskProgress": "{{done}}/{{total}}",
     "delete": "Ta bort",
     "restore": "Återställ",
-    "subtasks": "Deluppgifter"
+    "subtasks": "Deluppgifter",
+    "openDetails": "Öppna uppgift"
   },
   "percent": {
     "auto": "auto",
@@ -84,7 +85,29 @@
     "light": "Ljust",
     "dark": "Mörkt"
   },
+  "settings": {
+    "title": "Inställningar",
+    "open": "Öppna inställningar",
+    "account": "Konto",
+    "language": "Språk",
+    "subtasks": {
+      "title": "Var deluppgifterna visas",
+      "inline": "Under huvuduppgiften",
+      "inlineHint": "Deluppgifterna fälls ut i listan, precis som i Excel-filen.",
+      "detail": "I panelen till höger",
+      "detailHint": "Listan visar en rad per uppgift. Deluppgifterna syns när du öppnar uppgiften."
+    },
+    "list": {
+      "title": "Listan",
+      "showComments": "Visa kolumnen Kommentarer",
+      "density": "Radhöjd",
+      "compact": "Kompakt",
+      "comfortable": "Luftig"
+    }
+  },
   "a11y": {
-    "skipToContent": "Hoppa till uppgiftslistan"
+    "skipToContent": "Hoppa till uppgiftslistan",
+    "collapsePanel": "Fäll ihop sidopanelen",
+    "expandPanel": "Fäll ut sidopanelen"
   }
 }

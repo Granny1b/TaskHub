@@ -31,6 +31,16 @@ interface TaskRowProps extends RowCallbacks {
   selected: boolean;
   gridTemplate: string;
   compact: boolean;
+  /** Personal preference: row height. Only meaningful in the desktop grid. */
+  rowDensity: 'compact' | 'comfortable';
+  /** Personal preference: whether the Kommentarer column is in the list. */
+  showComments: boolean;
+  /**
+   * Personal preference: subtasks expand under their parent (`true`) or live
+   * only in the detail pane (`false`). When false the chevron opens the pane —
+   * the affordance stays, the destination changes.
+   */
+  inlineSubtasks: boolean;
   busy?: boolean;
 }
 
@@ -49,6 +59,9 @@ export function TaskRow({
   selected,
   gridTemplate,
   compact,
+  rowDensity,
+  showComments,
+  inlineSubtasks,
   busy,
   onPatch,
   onAddChild,
@@ -58,6 +71,26 @@ export function TaskRow({
 }: TaskRowProps) {
   const { t } = useTranslation();
   const [addingChild, setAddingChild] = useState(false);
+
+  // Density is a padding change, nothing more. Font size and column widths stay
+  // put so switching does not reflow the whole table.
+  const rowPadding = rowDensity === 'comfortable' ? 'py-3' : 'py-1.5';
+  const subtaskPadding = rowDensity === 'comfortable' ? 'py-2.5' : 'py-1';
+
+  // Both entry points into a task's subtasks — the chevron and the + button —
+  // go to wherever the user has decided subtasks live.
+  const openSubtasks = (): void => {
+    if (inlineSubtasks) onToggleExpand();
+    else onSelect();
+  };
+  const addSubtask = (): void => {
+    if (!inlineSubtasks) {
+      onSelect();
+      return;
+    }
+    if (!expanded) onToggleExpand();
+    setAddingChild(true);
+  };
 
   // Prefer the loaded aggregate; fall back to the listing projection. The
   // summary is enough to render a collapsed row, which is what keeps the list
@@ -110,7 +143,7 @@ export function TaskRow({
               {title}
             </span>
 
-            {comments.length > 0 ? (
+            {showComments && comments.length > 0 ? (
               <span className="mt-0.5 block truncate text-xs text-content-muted">{comments}</span>
             ) : null}
 
@@ -138,9 +171,9 @@ export function TaskRow({
           {hasChildren ? (
             <button
               type="button"
-              aria-label={t('columns.expand')}
-              aria-expanded={expanded}
-              onClick={onToggleExpand}
+              aria-label={inlineSubtasks ? t('columns.expand') : t('task.openDetails')}
+              aria-expanded={inlineSubtasks ? expanded : undefined}
+              onClick={openSubtasks}
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded text-content-muted"
             >
               <ChevronRightIcon
@@ -210,7 +243,7 @@ export function TaskRow({
       } ${busy === true ? 'opacity-60' : ''}`}
     >
       <div
-        className="group grid items-center gap-x-2 px-2 py-1.5"
+        className={`group grid items-center gap-x-2 px-2 ${rowPadding}`}
         style={{ gridTemplateColumns: gridTemplate }}
         onClick={onSelect}
         role="row"
@@ -220,11 +253,11 @@ export function TaskRow({
           {hasChildren ? (
             <button
               type="button"
-              aria-label={t('columns.expand')}
-              aria-expanded={expanded}
+              aria-label={inlineSubtasks ? t('columns.expand') : t('task.openDetails')}
+              aria-expanded={inlineSubtasks ? expanded : undefined}
               onClick={(event) => {
                 event.stopPropagation();
-                onToggleExpand();
+                openSubtasks();
               }}
               className="flex h-6 w-6 items-center justify-center rounded text-content-muted hover:bg-surface-hover hover:text-content"
             >
@@ -268,8 +301,9 @@ export function TaskRow({
           />
         </div>
 
-        {/* Kommentarer — a primary field, truncated to one line, never hidden. */}
-        {!compact ? (
+        {/* Kommentarer — a primary field, truncated to one line. Shown unless the
+            user has turned the column off in settings. */}
+        {!compact && showComments ? (
           <div className="min-w-0" onClick={(event) => event.stopPropagation()}>
             <InlineText
               value={comments}
@@ -333,14 +367,13 @@ export function TaskRow({
               label={t('task.newSubtask')}
               onClick={(event) => {
                 event.stopPropagation();
-                if (!expanded) onToggleExpand();
-                setAddingChild(true);
+                addSubtask();
               }}
             >
               <PlusIcon className="h-4 w-4" />
             </IconButton>
             <IconButton
-              label={t('columns.title')}
+              label={t('task.openDetails')}
               onClick={(event) => {
                 event.stopPropagation();
                 onSelect();
@@ -367,6 +400,8 @@ export function TaskRow({
               node={child}
               gridTemplate={gridTemplate}
               compact={compact}
+              showComments={showComments}
+              padding={subtaskPadding}
               onPatch={(patch) => onPatch(child.id, patch)}
               onRemove={() => onRemoveChild(child.id)}
             />
@@ -427,6 +462,9 @@ interface SubtaskRowProps {
   node: TaskNode;
   gridTemplate: string;
   compact: boolean;
+  showComments: boolean;
+  /** Vertical padding class, so a subtask matches its parent's density. */
+  padding: string;
   onPatch: (patch: PatchNode) => void;
   onRemove: () => void;
 }
@@ -438,13 +476,21 @@ interface SubtaskRowProps {
  * checkbox, and the discriminated union in the domain means it has no percent
  * to show even if this wanted to render one.
  */
-function SubtaskRow({ node, gridTemplate, compact, onPatch, onRemove }: SubtaskRowProps) {
+function SubtaskRow({
+  node,
+  gridTemplate,
+  compact,
+  showComments,
+  padding,
+  onPatch,
+  onRemove,
+}: SubtaskRowProps) {
   const { t } = useTranslation();
   const complete = isTaskComplete(node);
 
   return (
     <div
-      className="group grid items-center gap-x-2 px-2 py-1 hover:bg-surface-hover"
+      className={`group grid items-center gap-x-2 px-2 ${padding} hover:bg-surface-hover`}
       style={{ gridTemplateColumns: gridTemplate }}
       role="row"
     >
@@ -481,7 +527,7 @@ function SubtaskRow({ node, gridTemplate, compact, onPatch, onRemove }: SubtaskR
         />
       </div>
 
-      {!compact ? (
+      {!compact && showComments ? (
         <div className="min-w-0">
           <InlineText
             value={node.comments}

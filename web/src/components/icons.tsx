@@ -138,3 +138,12 @@ export function CheckIcon({ className = base }: IconProps) {
     </svg>
   );
 }
+
+export function PersonIcon({ className = base }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" aria-hidden>
+      <circle cx="10" cy="7" r="3" strokeWidth="1.5" />
+      <path d="M4 16.5a6 6 0 0112 0" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}

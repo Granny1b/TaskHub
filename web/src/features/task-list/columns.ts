@@ -142,8 +142,14 @@ export function useColumnWidths() {
    * columns — an all-fixed grid overflows and clips the right-hand columns.
    */
   const gridTemplate = useCallback(
-    (options: { compact: boolean }): string =>
-      COLUMNS.filter((column) => !(options.compact && column.desktopOnly === true))
+    (options: { compact: boolean; hideComments?: boolean }): string =>
+      COLUMNS.filter(
+        (column) =>
+          !(options.compact && column.desktopOnly === true) &&
+          !(options.hideComments === true && column.id === 'comments'),
+      )
+        // With Kommentarer hidden, Uppgift is the only flexible column and
+        // absorbs the slack on its own — no other change is needed.
         .map((column) =>
           column.flexible === true
             ? `minmax(${column.minWidth}px, ${column.flexGrow ?? 1}fr)`

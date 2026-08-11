@@ -14,6 +14,7 @@ import {
   useTask,
   useTasks,
 } from '../../lib/queries.js';
+import { usePreferences } from '../../lib/preferences.js';
 import { COLUMNS, useColumnWidths, type ColumnDefinition } from './columns.js';
 import { ConflictBanner } from './ConflictBanner.js';
 import { PercentSheet } from './PercentControl.js';
@@ -54,6 +55,7 @@ export function TaskListView({
   const { t } = useTranslation();
   const tasks = useTasks(filter);
   const { gridTemplate, setWidth, widthOf } = useColumnWidths();
+  const [preferences] = usePreferences();
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [creating, setCreating] = useState(false);
@@ -70,10 +72,24 @@ export function TaskListView({
   const addChild = useAddChild();
   const removeChild = useRemoveChild();
 
-  const template = gridTemplate({ compact });
+  /*
+    Subtask placement is a personal preference (settings, bottom left).
+
+    `inline` expands them under the parent as the workbook did; `detail` keeps
+    the list to one row per task and shows subtasks only in the pane. Neither is
+    right for everyone, which is why it is a setting rather than a decision.
+  */
+  const inlineSubtasks = preferences.subtaskDisplay === 'inline';
+
+  const template = gridTemplate({ compact, hideComments: !preferences.showComments });
   const visibleColumns = useMemo(
-    () => COLUMNS.filter((column) => !(compact && column.desktopOnly === true)),
-    [compact],
+    () =>
+      COLUMNS.filter(
+        (column) =>
+          !(compact && column.desktopOnly === true) &&
+          !(column.id === 'comments' && !preferences.showComments),
+      ),
+    [compact, preferences.showComments],
   );
 
   const toggleExpand = useCallback((id: string) => {
@@ -161,10 +177,13 @@ export function TaskListView({
               <TaskRowContainer
                 key={summary.id}
                 summary={summary}
-                expanded={expanded.has(summary.id)}
+                expanded={inlineSubtasks && expanded.has(summary.id)}
                 selected={selectedTaskId === summary.id}
                 gridTemplate={template}
                 compact={compact}
+                rowDensity={preferences.rowDensity}
+                showComments={preferences.showComments}
+                inlineSubtasks={inlineSubtasks}
                 onToggleExpand={() => toggleExpand(summary.id)}
                 onSelect={() => onSelectTask(summary.id)}
                 onPatch={(nodeId, nodePatch, etag) =>
@@ -238,6 +257,9 @@ function TaskRowContainer({
   compact,
   onToggleExpand,
   onSelect,
+  rowDensity,
+  showComments,
+  inlineSubtasks,
   onPatch,
   onAddChild,
   onRemoveChild,
@@ -250,6 +272,9 @@ function TaskRowContainer({
   compact: boolean;
   onToggleExpand: () => void;
   onSelect: () => void;
+  rowDensity: 'compact' | 'comfortable';
+  showComments: boolean;
+  inlineSubtasks: boolean;
   onPatch: (nodeId: string | undefined, patch: PatchNode, etag: string) => void;
   onAddChild: (title: string, etag: string) => void;
   onRemoveChild: (childId: string, etag: string) => void;
@@ -268,6 +293,9 @@ function TaskRowContainer({
       selected={selected}
       gridTemplate={gridTemplate}
       compact={compact}
+      rowDensity={rowDensity}
+      showComments={showComments}
+      inlineSubtasks={inlineSubtasks}
       busy={query.isFetching && query.data === undefined}
       onToggleExpand={onToggleExpand}
       onSelect={onSelect}
