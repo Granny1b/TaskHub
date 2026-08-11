@@ -17,6 +17,7 @@ import type { DragItemData } from './TaskListView.js';
 import type { PatchNode } from '../../lib/apiClient.js';
 import { InlineDate, InlineText } from './InlineEdit.js';
 import { PercentControl } from './PercentControl.js';
+import { SwipeRow } from './SwipeRow.js';
 
 export interface RowCallbacks {
   onPatch: (nodeId: string | undefined, patch: PatchNode) => void;
@@ -145,64 +146,75 @@ export function TaskRow({
           selected ? 'bg-surface-selected' : ''
         } ${busy === true ? 'opacity-60' : ''} ${dragging ? 'z-10 opacity-50 shadow-lg' : ''}`}
       >
-        <div className="flex items-start gap-1 px-2 py-1.5">
-          <span className="flex items-center">{dragHandle}</span>
+        {/*
+          Swipe covers the card, not the expanded subtasks underneath it: the
+          gesture acts on the main task, so it should not appear to pick up its
+          children. Each subtask row swipes on its own.
+        */}
+        <SwipeRow
+          complete={complete}
+          enabled={!dragging}
+          onToggle={(next) => onPatch(undefined, { isComplete: next })}
+        >
+          <div className="flex items-start gap-1 px-2 py-1.5">
+            <span className="flex items-center">{dragHandle}</span>
 
-          <Checkbox
-            checked={complete}
-            label={t('columns.complete')}
-            touchTarget
-            onChange={(next) => onPatch(undefined, { isComplete: next })}
-          />
+            <Checkbox
+              checked={complete}
+              label={t('columns.complete')}
+              touchTarget
+              onChange={(next) => onPatch(undefined, { isComplete: next })}
+            />
 
-          <button type="button" onClick={onSelect} className="min-w-0 flex-1 py-2 text-left">
-            <span
-              className={`block truncate text-sm font-semibold ${
-                complete ? 'text-content-muted line-through' : 'text-content'
-              }`}
-            >
-              {title}
-            </span>
+            <button type="button" onClick={onSelect} className="min-w-0 flex-1 py-2 text-left">
+              <span
+                className={`block truncate text-sm font-semibold ${
+                  complete ? 'text-content-muted line-through' : 'text-content'
+                }`}
+              >
+                {title}
+              </span>
 
-            {showComments && comments.length > 0 ? (
-              <span className="mt-0.5 block truncate text-xs text-content-muted">{comments}</span>
-            ) : null}
-
-            <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-content-muted">
-              <span className="tabular-nums">{date}</span>
-              {root !== undefined || summary.percent > 0 ? (
-                <span className="tabular-nums">
-                  {complete ? `✓ ${summary.percent}%` : `${summary.percent}%`}
-                </span>
+              {showComments && comments.length > 0 ? (
+                <span className="mt-0.5 block truncate text-xs text-content-muted">{comments}</span>
               ) : null}
-              {hasChildren ? (
-                <span className="tabular-nums">
-                  {t('task.subtaskProgress', { done: childDone, total: childCount })}
-                </span>
-              ) : null}
-              {summary.attachmentCount > 0 ? (
-                <span className="inline-flex items-center gap-0.5">
-                  <PaperclipIcon className="h-3 w-3" />
-                  {summary.attachmentCount}
-                </span>
-              ) : null}
-            </span>
-          </button>
 
-          {hasChildren ? (
-            <button
-              type="button"
-              aria-label={inlineSubtasks ? t('columns.expand') : t('task.openDetails')}
-              aria-expanded={inlineSubtasks ? expanded : undefined}
-              onClick={openSubtasks}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded text-content-muted"
-            >
-              <ChevronRightIcon
-                className={`h-4 w-4 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`}
-              />
+              <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-content-muted">
+                <span className="tabular-nums">{date}</span>
+                {root !== undefined || summary.percent > 0 ? (
+                  <span className="tabular-nums">
+                    {complete ? `✓ ${summary.percent}%` : `${summary.percent}%`}
+                  </span>
+                ) : null}
+                {hasChildren ? (
+                  <span className="tabular-nums">
+                    {t('task.subtaskProgress', { done: childDone, total: childCount })}
+                  </span>
+                ) : null}
+                {summary.attachmentCount > 0 ? (
+                  <span className="inline-flex items-center gap-0.5">
+                    <PaperclipIcon className="h-3 w-3" />
+                    {summary.attachmentCount}
+                  </span>
+                ) : null}
+              </span>
             </button>
-          ) : null}
-        </div>
+
+            {hasChildren ? (
+              <button
+                type="button"
+                aria-label={inlineSubtasks ? t('columns.expand') : t('task.openDetails')}
+                aria-expanded={inlineSubtasks ? expanded : undefined}
+                onClick={openSubtasks}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded text-content-muted"
+              >
+                <ChevronRightIcon
+                  className={`h-4 w-4 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`}
+                />
+              </button>
+            ) : null}
+          </div>
+        </SwipeRow>
 
         {complete && childCount - childDone > 0 ? (
           <p className="px-2 pb-1.5 pl-14 text-xs text-content-muted">
@@ -507,6 +519,7 @@ function CompactSubtaskRow({
   onPatch: (patch: PatchNode) => void;
 }) {
   const { t } = useTranslation();
+  const complete = isTaskComplete(node);
   const sortable = useSortable({
     id: node.id,
     data: { type: 'child', taskId, siblingIds, etag } satisfies DragItemData,
@@ -519,35 +532,43 @@ function CompactSubtaskRow({
         transform: CSS.Transform.toString(sortable.transform),
         transition: sortable.transition,
       }}
-      className={`flex items-center gap-1 border-l border-border-subtle bg-surface pl-2 ${
+      className={`border-l border-border-subtle bg-surface ${
         sortable.isDragging ? 'z-10 opacity-50 shadow-lg' : ''
       }`}
     >
-      <button
-        type="button"
-        ref={sortable.setActivatorNodeRef}
-        {...sortable.attributes}
-        {...sortable.listeners}
-        aria-label={t('dnd.handle', { name: node.title })}
-        className="flex h-11 w-5 shrink-0 cursor-grab touch-none items-center justify-center rounded text-content-muted opacity-60"
+      <SwipeRow
+        complete={complete}
+        enabled={!sortable.isDragging}
+        onToggle={(next) => onPatch({ isComplete: next })}
       >
-        <GripIcon className="h-4 w-4" />
-      </button>
+        <div className="flex items-center gap-1 pl-2">
+          <button
+            type="button"
+            ref={sortable.setActivatorNodeRef}
+            {...sortable.attributes}
+            {...sortable.listeners}
+            aria-label={t('dnd.handle', { name: node.title })}
+            className="flex h-11 w-5 shrink-0 cursor-grab touch-none items-center justify-center rounded text-content-muted opacity-60"
+          >
+            <GripIcon className="h-4 w-4" />
+          </button>
 
-      <Checkbox
-        checked={isTaskComplete(node)}
-        label={t('columns.complete')}
-        touchTarget
-        onChange={(next) => onPatch({ isComplete: next })}
-      />
+          <Checkbox
+            checked={complete}
+            label={t('columns.complete')}
+            touchTarget
+            onChange={(next) => onPatch({ isComplete: next })}
+          />
 
-      <span
-        className={`min-w-0 flex-1 truncate text-sm ${
-          isTaskComplete(node) ? 'text-content-muted line-through' : 'text-content'
-        }`}
-      >
-        {node.title}
-      </span>
+          <span
+            className={`min-w-0 flex-1 truncate text-sm ${
+              complete ? 'text-content-muted line-through' : 'text-content'
+            }`}
+          >
+            {node.title}
+          </span>
+        </div>
+      </SwipeRow>
     </div>
   );
 }

@@ -830,3 +830,58 @@ icon rail. There is nowhere for a grip to live that is not the icon itself, and
 nothing on screen to say what you picked up. The grip replaces the list icon on
 hover when the panel is open — a 240px panel has no width for a column that is
 empty most of the time — and stays visible on touch, where no hover is coming.
+
+---
+
+## ADR-0035 — Swipe to complete is one direction, and it toggles
+
+**Date:** 2026-08-11 · **Status:** accepted
+
+**Context.** §11 asks for swipe-to-complete on mobile. The card already carries
+a checkbox, a tap that opens the task, a long-press grip that reorders it, and
+sits in a list that scrolls — so the question was never how to detect a swipe,
+it was what a swipe is allowed to take away from everything else a finger does.
+
+**Decision.** One direction — right — and the same gesture toggles: swipe an
+open task to tick it off, swipe a done task to reopen it. The band revealed
+underneath says which, so the gesture never has to be remembered.
+
+**Why not two directions.** Left would need a second meaning, and the only
+candidate on this row is delete. That is exactly the action that should not be
+one careless thumb away, particularly on a phone held in a workshop. A left
+swipe therefore does nothing at all, and the row does not follow the finger that
+way — a row that moved would promise an action that is not there.
+
+**Why toggle rather than complete-only.** A one-way gesture leaves a completed
+row with a dead swipe and no obvious way back, which teaches people the gesture
+is unreliable. Toggling means the mistake and its fix are the same motion.
+
+**How it shares the screen.** Three gestures start with a finger on the same
+pixel, and each keeps its claim:
+
+- **Scroll** wins ties. `touch-action: pan-y` gives vertical panning to the
+  browser, and a gesture that starts more vertical than horizontal is dropped
+  outright rather than tracked — so a later sideways wobble cannot resurrect it.
+  Being wrong about a swipe costs a tap; being wrong about a scroll makes the
+  whole list feel stuck.
+- **Reorder** listens only on the grip and waits 220ms. A swipe moves
+  immediately, so it fails that sensor's tolerance check before the delay
+  elapses. The two cannot both fire.
+- **Tap** is suppressed after a real swipe, or every completed task would also
+  open its detail pane.
+
+**Feedback.** The band is faint until the row has travelled far enough to act,
+then goes solid. Without that there is no visible failure state, and a thumb
+that stops short learns nothing.
+
+**Accessibility.** The gesture adds nothing that is not already reachable: the
+checkbox is unchanged and is what a screen reader announces, and the band is
+`aria-hidden`. Mouse pointers are ignored outright — this is a touch affordance
+on a layout that only exists on a phone.
+
+**One bug worth recording.** The band was first drawn with `--success-500` and
+`--warning-500` and white text: 3.30:1 and 3.19:1, both short of the 4.5:1 that
+text needs. `docs/TOKENS.md` already warned that those steps fail as _text on
+white_, and the same numbers apply to _white on them_ — contrast is symmetric,
+which is the easy half of the rule to forget. The band now uses the 600 step
+(5.02:1) and TOKENS.md says so in both directions.

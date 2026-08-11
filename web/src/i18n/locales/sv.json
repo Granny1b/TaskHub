@@ -85,6 +85,10 @@
     "light": "Ljust",
     "dark": "Mörkt"
   },
+  "swipe": {
+    "complete": "Klar",
+    "reopen": "Ångra"
+  },
   "dnd": {
     "handle": "Flytta {{name}}",
     "handleShort": "Dra för att flytta",

@@ -85,6 +85,10 @@
     "light": "Light",
     "dark": "Dark"
   },
+  "swipe": {
+    "complete": "Done",
+    "reopen": "Undo"
+  },
   "dnd": {
     "handle": "Move {{name}}",
     "handleShort": "Drag to move",

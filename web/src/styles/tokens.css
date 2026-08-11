@@ -47,10 +47,18 @@
   --accent-800: #124f6d;
   --accent-900: #0d3a50;
 
-  /* Semantic status */
+  /*
+    Semantic status.
+
+    The 500 step is a *fill*: 3.30:1 for success and 3.19:1 for warning, which
+    clears 1.4.11 for a shape but not 1.4.3 for text. The 600 step is the one to
+    use whenever words sit on it, or are drawn in it — both measure 5.02:1
+    against white. docs/TOKENS.md carries the full table.
+  */
   --success-500: #16a34a;
   --success-600: #15803d;
   --warning-500: #d97706;
+  --warning-600: #b45309;
   --danger-500: #dc2626;
   --danger-600: #b91c1c;
 

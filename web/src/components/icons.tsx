@@ -139,6 +139,26 @@ export function CheckIcon({ className = base }: IconProps) {
   );
 }
 
+/** An arrow curving back on itself: undo, reopen, put it back. */
+export function UndoIcon({ className = base }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" aria-hidden>
+      <path
+        d="M4 9h8a4 4 0 010 8H7"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7 5.5L3.5 9 7 12.5"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /** Six dots: the near-universal "grab me" affordance for a reorderable row. */
 export function GripIcon({ className = base }: IconProps) {
   return (

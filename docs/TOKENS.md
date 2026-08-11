@@ -120,6 +120,12 @@ Note the split into `-text` variants for success and warning: at the standard 60
 4.5:1 as text on white. Keeping one token for the fill and one for the label avoids the very
 common bug of a green "Complete" label that no one over 45 can read.
 
+**The rule cuts both ways, and that is easier to forget.** The same 3.30:1 and 3.19:1 apply to
+white text drawn _on_ those fills — contrast is symmetric. The swipe-to-complete band on mobile is
+a filled panel with a word in it, so it uses the darker step (`--success-600` / `--warning-600` in
+`tokens.css`, the same values as the `-text` variants above) and measures 5.02:1. Any future
+filled badge, toast or banner carrying text is in the same position: reach for 600, not 500.
+
 ### 2.4 Semantic surface and text aliases
 
 **This is the layer components use.** Light and dark both defined from day one.
