@@ -1,0 +1,141 @@
+/**
+ * Design tokens.
+ *
+ * This file is the single source of colour, spacing, radius and type in the
+ * app. Components reference semantic names (`bg-surface`, `text-muted`) and
+ * never raw ramp values, so re-skinning the app — including the swap to
+ * FinalInspection's real brand values — is an edit to this file alone.
+ *
+ * PLACEHOLDER VALUES. The FinalInspection repository was not available, so
+ * these are a neutral set chosen to be swapped. See docs/TOKENS.md for the
+ * mapping and the swap procedure.
+ *
+ * Note on the brand accent: the workbook's cyan-blue (#29ABE2) measures only
+ * 2.62:1 against white, which fails WCAG for both text (4.5:1) and non-text
+ * (3:1). It is therefore kept as the *brand* colour for large fills, while
+ * functional accent use (buttons, focus rings, links, active nav) routes
+ * through the darker accent-700 on light surfaces and accent-400 on dark.
+ * See docs/TOKENS.md.
+ *
+ * Dark mode exists from day one. Retrofitting it after the UI is built means
+ * touching every component, which is exactly the cost the spec warns about.
+ */
+
+:root {
+  /* Neutral ramp */
+  --neutral-50: #f8fafc;
+  --neutral-100: #f1f5f9;
+  --neutral-200: #e2e8f0;
+  --neutral-300: #cbd5e1;
+  --neutral-400: #94a3b8;
+  --neutral-500: #64748b;
+  --neutral-600: #475569;
+  --neutral-700: #334155;
+  --neutral-800: #1e293b;
+  --neutral-900: #0f172a;
+  --neutral-950: #020617;
+
+  /* Brand / accent ramp, seeded from the Modig workbook cyan-blue */
+  --accent-50: #eaf7fd;
+  --accent-100: #d0edfa;
+  --accent-200: #a5dcf5;
+  --accent-300: #6fc8ef;
+  --accent-400: #46baea;
+  --accent-500: #29abe2; /* the brand hex — large fills only, fails text contrast */
+  --accent-600: #1d8cbd;
+  --accent-700: #166d95; /* functional accent on light surfaces (5.74:1 on white) */
+  --accent-800: #124f6d;
+  --accent-900: #0d3a50;
+
+  /* Semantic status */
+  --success-500: #16a34a;
+  --success-600: #15803d;
+  --warning-500: #d97706;
+  --danger-500: #dc2626;
+  --danger-600: #b91c1c;
+
+  /* Semantic surfaces — light. These are what components actually use. */
+  --surface: #ffffff;
+  --surface-raised: var(--neutral-50);
+  --surface-sunken: var(--neutral-100);
+  --surface-hover: var(--neutral-100);
+  --surface-selected: var(--accent-50);
+  --border: var(--neutral-200);
+  --border-strong: var(--neutral-300);
+  --text: var(--neutral-900);
+  --text-muted: var(--neutral-500);
+  --text-inverse: #ffffff;
+  --accent: var(--accent-700);
+  --accent-hover: var(--accent-800);
+  --accent-contrast: #ffffff;
+  --focus-ring: var(--accent-700);
+
+  /* 8px spacing grid */
+  --spacing: 0.5rem;
+
+  /* Radii */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+
+  /* Shadows — subtle borders are preferred over heavy shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.05);
+  --shadow-md: 0 2px 8px -1px rgb(15 23 42 / 0.08);
+  --shadow-lg: 0 8px 24px -4px rgb(15 23 42 / 0.12);
+
+  /* Motion. Honoured only when the user has not asked for less. */
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Dense working list, not a marketing page */
+  --row-height-compact: 2.25rem;
+  --row-height-comfortable: 2.75rem;
+}
+
+/* Explicit user choice wins. */
+[data-theme='dark'] {
+  --surface: var(--neutral-900);
+  --surface-raised: var(--neutral-800);
+  --surface-sunken: var(--neutral-950);
+  --surface-hover: var(--neutral-800);
+  --surface-selected: var(--accent-900);
+  --border: var(--neutral-800);
+  --border-strong: var(--neutral-700);
+  --text: var(--neutral-100);
+  --text-muted: var(--neutral-400);
+  --text-inverse: var(--neutral-900);
+  --accent: var(--accent-400);
+  --accent-hover: var(--accent-300);
+  --accent-contrast: var(--neutral-950);
+  --focus-ring: var(--accent-400);
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow-md: 0 2px 8px -1px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 8px 24px -4px rgb(0 0 0 / 0.6);
+}
+
+/* System preference, unless the user has explicitly chosen light. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --surface: var(--neutral-900);
+    --surface-raised: var(--neutral-800);
+    --surface-sunken: var(--neutral-950);
+    --surface-hover: var(--neutral-800);
+    --surface-selected: var(--accent-900);
+    --border: var(--neutral-800);
+    --border-strong: var(--neutral-700);
+    --text: var(--neutral-100);
+    --text-muted: var(--neutral-400);
+    --text-inverse: var(--neutral-900);
+    --accent: var(--accent-400);
+    --accent-hover: var(--accent-300);
+    --accent-contrast: var(--neutral-950);
+    --focus-ring: var(--accent-400);
+
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+    --shadow-md: 0 2px 8px -1px rgb(0 0 0 / 0.5);
+    --shadow-lg: 0 8px 24px -4px rgb(0 0 0 / 0.6);
+  }
+}

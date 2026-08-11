@@ -1,0 +1,78 @@
+{
+  "app": {
+    "name": "TaskHub",
+    "tagline": "Task management for Modig Machine Tool"
+  },
+  "views": {
+    "list": "List"
+  },
+  "columns": {
+    "expand": "Show subtasks",
+    "complete": "Done",
+    "date": "Date",
+    "title": "Task",
+    "comments": "Comments",
+    "status": "Status",
+    "completedDate": "Completed",
+    "attachments": "Attachments"
+  },
+  "task": {
+    "new": "New task",
+    "newSubtask": "New subtask",
+    "titlePlaceholder": "What needs doing?",
+    "commentsPlaceholder": "Comments",
+    "openSubtasks_one": "{{count}} open subtask",
+    "openSubtasks_other": "{{count}} open subtasks",
+    "subtaskProgress": "{{done}}/{{total}}",
+    "delete": "Delete",
+    "restore": "Restore"
+  },
+  "percent": {
+    "auto": "auto",
+    "backToAuto": "Back to auto",
+    "derivedFrom": "{{done}} of {{total}} subtasks",
+    "label": "Completion"
+  },
+  "lists": {
+    "title": "Lists",
+    "new": "New list",
+    "namePlaceholder": "List name",
+    "ungrouped": "Ungrouped",
+    "all": "All tasks",
+    "rename": "Rename",
+    "delete": "Delete list"
+  },
+  "filters": {
+    "all": "All",
+    "open": "Open",
+    "completed": "Completed",
+    "search": "Search"
+  },
+  "attachments": {
+    "add": "Add files",
+    "camera": "Take photo",
+    "drop": "Drop files here",
+    "uploading": "Uploading…",
+    "cancel": "Cancel",
+    "tooLarge": "File is too large (max {{max}} MB)",
+    "notAllowed": "File type not allowed"
+  },
+  "conflict": {
+    "banner": "This task changed while you were editing — review",
+    "review": "Review",
+    "reload": "Reload"
+  },
+  "empty": {
+    "noTasks": "No tasks yet",
+    "noTasksAction": "Create your first task",
+    "noResults": "No matches"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "loading": "Loading…",
+    "error": "Something went wrong",
+    "retry": "Try again"
+  }
+}

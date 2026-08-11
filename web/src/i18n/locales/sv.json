@@ -1,0 +1,78 @@
+{
+  "app": {
+    "name": "TaskHub",
+    "tagline": "Uppgiftshantering för Modig Machine Tool"
+  },
+  "views": {
+    "list": "Lista"
+  },
+  "columns": {
+    "expand": "Visa deluppgifter",
+    "complete": "Klar",
+    "date": "Datum",
+    "title": "Uppgift",
+    "comments": "Kommentarer",
+    "status": "Status",
+    "completedDate": "Färdig datum",
+    "attachments": "Bilagor"
+  },
+  "task": {
+    "new": "Ny uppgift",
+    "newSubtask": "Ny deluppgift",
+    "titlePlaceholder": "Vad ska göras?",
+    "commentsPlaceholder": "Kommentarer",
+    "openSubtasks_one": "{{count}} öppen deluppgift",
+    "openSubtasks_other": "{{count}} öppna deluppgifter",
+    "subtaskProgress": "{{done}}/{{total}}",
+    "delete": "Ta bort",
+    "restore": "Återställ"
+  },
+  "percent": {
+    "auto": "auto",
+    "backToAuto": "Tillbaka till auto",
+    "derivedFrom": "{{done}} av {{total}} deluppgifter",
+    "label": "Färdigställandegrad"
+  },
+  "lists": {
+    "title": "Listor",
+    "new": "Ny lista",
+    "namePlaceholder": "Namn på listan",
+    "ungrouped": "Ogrupperade",
+    "all": "Alla uppgifter",
+    "rename": "Byt namn",
+    "delete": "Ta bort lista"
+  },
+  "filters": {
+    "all": "Alla",
+    "open": "Öppna",
+    "completed": "Klara",
+    "search": "Sök"
+  },
+  "attachments": {
+    "add": "Lägg till filer",
+    "camera": "Ta foto",
+    "drop": "Släpp filer här",
+    "uploading": "Laddar upp…",
+    "cancel": "Avbryt",
+    "tooLarge": "Filen är för stor (max {{max}} MB)",
+    "notAllowed": "Filtypen tillåts inte"
+  },
+  "conflict": {
+    "banner": "Uppgiften ändrades medan du redigerade — granska ändringarna",
+    "review": "Granska",
+    "reload": "Läs om"
+  },
+  "empty": {
+    "noTasks": "Inga uppgifter ännu",
+    "noTasksAction": "Skapa din första uppgift",
+    "noResults": "Inga träffar"
+  },
+  "common": {
+    "save": "Spara",
+    "cancel": "Avbryt",
+    "close": "Stäng",
+    "loading": "Laddar…",
+    "error": "Något gick fel",
+    "retry": "Försök igen"
+  }
+}
