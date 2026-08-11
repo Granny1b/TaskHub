@@ -53,21 +53,21 @@ tests. It is the single command that says whether the repository is healthy.
 
 ### Everyday scripts
 
-| Script                      | Does                                                 |
-| --------------------------- | ---------------------------------------------------- |
-| `npm run verify`            | All gates. Use this before committing.               |
-| `npm run dev`               | Vite dev server on :5173, proxying `/api` to :7071   |
-| `npm run dev:api`           | Azure Functions host (needs Core Tools + Azurite)    |
-| `npm test`                  | Vitest unit tests once                               |
-| `npm run test:integration`  | Integration tests against Azurite (auto-started)     |
-| `npm run test:watch`        | Vitest in watch mode                                 |
-| `npm run test:coverage`     | Coverage, with the domain threshold enforced         |
-| `npm run lint` / `lint:fix` | ESLint, including architectural boundary rules       |
-| `npm run typecheck`         | `tsc --build` across all three packages              |
-| `npm run format`            | Prettier write                                       |
-| `npm run clean`             | Remove build output (cross-platform)                 |
-| `npm run stage:api`         | Assemble the self-contained API deployment folder    |
-| `npm run dev:local`         | Built UI + in-memory API on one port, with demo data |
+| Script                      | Does                                               |
+| --------------------------- | -------------------------------------------------- |
+| `npm run verify`            | All gates. Use this before committing.             |
+| `npm run dev`               | Vite dev server on :5173, proxying `/api` to :7071 |
+| `npm run dev:api`           | Azure Functions host (needs Core Tools + Azurite)  |
+| `npm test`                  | Vitest unit tests once                             |
+| `npm run test:integration`  | Integration tests against Azurite (auto-started)   |
+| `npm run test:watch`        | Vitest in watch mode                               |
+| `npm run test:coverage`     | Coverage, with the domain threshold enforced       |
+| `npm run lint` / `lint:fix` | ESLint, including architectural boundary rules     |
+| `npm run typecheck`         | `tsc --build` across all three packages            |
+| `npm run format`            | Prettier write                                     |
+| `npm run clean`             | Remove build output (cross-platform)               |
+| `npm run stage:api`         | Assemble the self-contained API deployment folder  |
+| `npm run dev:local`         | Built UI + API on one port, with demo data         |
 
 ### Local API against the blob emulator
 
@@ -80,6 +80,32 @@ npm run dev:api
 
 `local.settings.json` is gitignored. See `.env.example` for every variable and
 what it is for.
+
+### Running the UI without the Functions host
+
+```powershell
+npm run build
+npm run bundle --workspace web
+npm run dev:local
+```
+
+Serves the built UI and the API together on one port, backed by in-memory
+storage and seeded with demo data. Enough for UI work, and it needs neither the
+Functions Core Tools nor Azurite.
+
+**Attachments need real blob storage**, because a SAS is signed against an
+actual account and the browser uploads straight to it. Point the same command at
+Azurite to exercise the upload pipeline for real:
+
+```powershell
+npx azurite --silent --location ./.azurite --skipApiVersionCheck
+$env:AZURE_STORAGE_CONNECTION_STRING = "UseDevelopmentStorage=true"
+npm run dev:local
+```
+
+It configures the emulator's CORS rules on startup to match what the Bicep sets
+in Azure — without them every upload fails at the preflight, which is the single
+most common way this pipeline breaks.
 
 ## Layout
 

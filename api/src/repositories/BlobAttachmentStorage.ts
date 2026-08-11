@@ -31,6 +31,22 @@ export class BlobAttachmentStorage implements IAttachmentStorage {
     private readonly credential: StorageSharedKeyCredential,
   ) {}
 
+  /**
+   * Bind the grant to HTTPS wherever the endpoint supports it.
+   *
+   * Against a real storage account this is always `HttpsOnly`, which is the
+   * point: a SAS is a bearer credential in a URL, and one usable over plain
+   * HTTP is one that can be read off the wire.
+   *
+   * The exception is the local emulator, which serves plain HTTP — demanding
+   * HTTPS there produces `AuthorizationProtocolMismatch` on every upload. So
+   * the constraint is derived from the endpoint rather than hardcoded: it can
+   * only relax when the endpoint is already insecure, never for a deployed one.
+   */
+  private get protocol(): SASProtocol {
+    return this.container.url.startsWith('https:') ? SASProtocol.Https : SASProtocol.HttpsAndHttp;
+  }
+
   async createUploadGrant(input: { blobPath: string; contentType: string }): Promise<UploadGrant> {
     const now = new Date();
     const expiresOn = new Date(now.getTime() + UPLOAD_SAS_MINUTES * 60_000);
@@ -43,7 +59,7 @@ export class BlobAttachmentStorage implements IAttachmentStorage {
         permissions: BlobSASPermissions.parse('cw'),
         startsOn: new Date(now.getTime() - CLOCK_SKEW_MINUTES * 60_000),
         expiresOn,
-        protocol: SASProtocol.Https,
+        protocol: this.protocol,
         contentType: input.contentType,
       },
       this.credential,
@@ -68,7 +84,7 @@ export class BlobAttachmentStorage implements IAttachmentStorage {
         permissions: BlobSASPermissions.parse('r'),
         startsOn: new Date(now.getTime() - CLOCK_SKEW_MINUTES * 60_000),
         expiresOn,
-        protocol: SASProtocol.Https,
+        protocol: this.protocol,
       },
       this.credential,
     ).toString();

@@ -56,7 +56,9 @@
     "uploading": "Uploading…",
     "cancel": "Cancel",
     "tooLarge": "File is too large (max {{max}} MB)",
-    "notAllowed": "File type not allowed"
+    "notAllowed": "File type not allowed",
+    "openFile": "Open",
+    "noThumbnail": "No preview"
   },
   "conflict": {
     "banner": "This task changed while you were editing — review",

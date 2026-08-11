@@ -563,3 +563,90 @@ static files. `--seed` loads demo data exercising the awkward cases: a derived
 - It duplicates **routing only** — no business logic. The real handlers remain
   the deployed path and are covered by the Azurite integration tests.
 - It has no authentication and is not for production; the file says so.
+
+---
+
+## ADR-0027 — Upload with XMLHttpRequest, not the storage SDK
+
+**Date:** 2026-08-11 · **Status:** accepted · **Deviates from spec §11**
+
+**Context.** The spec says to upload with the `@azure/storage-blob` browser SDK.
+
+**Decision.** Use a plain `XMLHttpRequest` PUT to the SAS URL.
+
+**Rationale.**
+
+- The SDK exists to manage credentials, retries, chunking and a large surface of
+  blob operations. We do one thing: PUT a single block blob to a URL that
+  already carries its own authentication. Paying the SDK's bundle weight on
+  every page load for that is a poor trade in an app whose entire design is
+  shaped by cost.
+- `XMLHttpRequest.upload.onprogress` is still the only way to observe upload
+  progress in a browser — `fetch` has no equivalent — and progress with cancel
+  is exactly what the spec asks for.
+
+**Consequences.** Two headers must be right by hand: `x-ms-blob-type:
+BlockBlob` (mandatory, and must appear in the storage CORS allowed-headers list
+or the preflight fails) and `Content-Type`, which is bound into the SAS
+signature. Both are covered by the integration tests, which upload the same way
+the browser does — a raw PUT with no credential — so they prove the grant
+itself, which a test using the SDK and the account key would not.
+
+---
+
+## ADR-0028 — SAS protocol is derived from the endpoint
+
+**Date:** 2026-08-11 · **Status:** accepted · **Found by:** integration test
+
+**Context.** A SAS is a bearer credential in a URL, so grants were pinned to
+`SASProtocol.Https`. Every upload against the local emulator then failed with
+`AuthorizationProtocolMismatch`, because Azurite serves plain HTTP.
+
+**Decision.** Derive the protocol from the container URL: HTTPS-only when the
+endpoint is `https:`, both otherwise.
+
+**Consequences.** Deployed environments always get HTTPS-only grants, because a
+real storage account is always `https:`. The constraint can only relax where the
+endpoint is already insecure, so this cannot weaken production by accident.
+
+---
+
+## ADR-0029 — Attachment commits are serialised; uploads are not
+
+**Date:** 2026-08-11 · **Status:** accepted · **Found by:** browser test
+
+**Context.** Dropping two files at once uploaded both fine and then failed the
+second commit with a 409: each commit is a conditional write against the task's
+ETag, and both read the same version before either wrote.
+
+**Decision.** Uploads stay fully parallel — that is where the time goes. The
+commit step alone is serialised through a promise chain, so each commit reads
+the ETag the previous one produced.
+
+**Consequences.** Dropping a folder of photos works. The queue advances on
+failure as well as success, so one rejected commit does not stall the rest. This
+was invisible to every unit test and to a single-file upload; it took dropping
+two files in a real browser to surface.
+
+---
+
+## ADR-0030 — Task blobs are matched as `{ULID}.json`, not `*.json`
+
+**Date:** 2026-08-11 · **Status:** accepted · **Found by:** running the app
+
+**Context.** The task listing matched any `*.json` blob in the container. The
+container also holds `lists.json` (ADR-0004). The listing picked it up, found no
+task metadata on it, fell back to opening it as a task document, and failed
+validation — returning a 400 for the entire list view.
+
+This would have happened the moment a user created their first list. Every unit
+and integration test passed, because no test had both a list and a task listing
+in the same container.
+
+**Decision.** Match `^[0-9A-HJKMNP-TV-Z]{26}\.json$` — the ULID pattern —
+rather than any JSON blob. A regression test now creates a list and asserts the
+task listing still works.
+
+**Consequences.** Non-task blobs can coexist in the container, which the
+projection blob in the Phase-2 scale plan will need. A blob whose name is not a
+ULID is not a task, which is a rule worth having explicitly.

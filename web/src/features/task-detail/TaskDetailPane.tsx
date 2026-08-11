@@ -7,6 +7,7 @@ import { Skeleton } from '../../components/Skeleton.js';
 import { InlineDate, InlineText } from '../task-list/InlineEdit.js';
 import { PercentControl } from '../task-list/PercentControl.js';
 import { useAddChild, useDeleteTask, usePatchNode, useTask } from '../../lib/queries.js';
+import { AttachmentsSection } from '../attachments/AttachmentsSection.js';
 
 interface TaskDetailPaneProps {
   taskId: string;
@@ -184,15 +185,12 @@ export function TaskDetailPane({ taskId, onClose, asRoute }: TaskDetailPaneProps
           )}
         </section>
 
-        <section className="mt-6">
-          <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-content-muted">
-            {t('columns.attachments')}
-          </h2>
-          {/* Phase 5 replaces this with the drop zone, grid and camera capture. */}
-          <p className="rounded-md border border-dashed border-border-strong px-3 py-6 text-center text-sm text-content-muted">
-            {t('attachments.add')} — Phase 5
-          </p>
-        </section>
+        <AttachmentsSection
+          taskId={taskId}
+          attachments={root.attachments}
+          etag={etag}
+          compact={asRoute === true}
+        />
 
         <div className="mt-8 border-t border-border-subtle pt-4">
           <Button

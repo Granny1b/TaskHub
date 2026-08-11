@@ -1,4 +1,4 @@
-import type { TaskDocument, TaskList, TaskNode, TaskSummary } from '@taskhub/shared';
+import type { Attachment, TaskDocument, TaskList, TaskNode, TaskSummary } from '@taskhub/shared';
 
 /**
  * The HTTP client.
@@ -128,6 +128,15 @@ function taskQuery(filter: TaskFilter): string {
   return query.length > 0 ? `?${query}` : '';
 }
 
+export interface UploadGrantResponse {
+  attachmentId: string;
+  uploadUrl: string;
+  blobPath: string;
+  thumbnailPath: string | null;
+  thumbnailUploadUrl: string | null;
+  expiresOn: string;
+}
+
 export interface PatchNode {
   title?: string;
   date?: string;
@@ -212,6 +221,66 @@ export const api = {
     ifMatch: string,
   ): Promise<WithETag<TaskDocument>> {
     return request<TaskDocument>(`/tasks/${id}/reorder`, { method: 'POST', body: input, ifMatch });
+  },
+
+  /* ---------------------------------------------------------------------- */
+  /* Attachments                                                             */
+  /* ---------------------------------------------------------------------- */
+
+  /** Step 1: ask for a short-lived, write-only, single-blob grant. */
+  async requestUploadGrant(
+    taskId: string,
+    input: { fileName: string; contentType: string; sizeBytes: number; nodeId?: string },
+  ): Promise<UploadGrantResponse> {
+    const { data } = await request<UploadGrantResponse>(`/tasks/${taskId}/attachments/sas`, {
+      method: 'POST',
+      body: input,
+    });
+    return data;
+  },
+
+  /** Step 5: record the uploaded file on the document. Requires If-Match. */
+  async commitAttachment(
+    taskId: string,
+    input: {
+      attachmentId: string;
+      fileName: string;
+      contentType: string;
+      sizeBytes: number;
+      blobPath: string;
+      thumbnailPath?: string | null;
+      nodeId?: string;
+    },
+    ifMatch: string,
+  ): Promise<WithETag<{ attachment: Attachment; task: TaskDocument }>> {
+    return request<{ attachment: Attachment; task: TaskDocument }>(
+      `/tasks/${taskId}/attachments/commit`,
+      { method: 'POST', body: input, ifMatch },
+    );
+  },
+
+  /** A read URL, valid for minutes. Containers are never public. */
+  async getAttachmentUrl(
+    taskId: string,
+    attachmentId: string,
+    options: { thumbnail?: boolean } = {},
+  ): Promise<{ url: string; expiresOn: string; fileName: string }> {
+    const query = options.thumbnail === true ? '?thumbnail=true' : '';
+    const { data } = await request<{ url: string; expiresOn: string; fileName: string }>(
+      `/attachments/${taskId}/${attachmentId}/url${query}`,
+    );
+    return data;
+  },
+
+  async deleteAttachment(
+    taskId: string,
+    attachmentId: string,
+    ifMatch: string,
+  ): Promise<WithETag<TaskDocument>> {
+    return request<TaskDocument>(`/tasks/${taskId}/attachments/${attachmentId}`, {
+      method: 'DELETE',
+      ifMatch,
+    });
   },
 
   /* ---------------------------------------------------------------------- */

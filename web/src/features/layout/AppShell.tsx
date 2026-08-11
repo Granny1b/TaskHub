@@ -6,6 +6,7 @@ import { MenuIcon, PlusIcon, SearchIcon } from '../../components/icons.js';
 import type { TaskFilter } from '../../lib/apiClient.js';
 import { useIsDesktop } from '../../lib/useMediaQuery.js';
 import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts.js';
+import { useWindowDropGuard } from '../attachments/DropZone.js';
 import { TaskDetailPane } from '../task-detail/TaskDetailPane.js';
 import { TaskListView } from '../task-list/TaskListView.js';
 import { LeftPanel, type ListSelection } from './LeftPanel.js';
@@ -46,6 +47,10 @@ export function AppShell() {
   const closeTask = useCallback(() => {
     navigate('/');
   }, [navigate]);
+
+  // A file dropped outside a drop zone must do nothing, not navigate away and
+  // discard what the user was doing.
+  useWindowDropGuard();
 
   useKeyboardShortcuts({
     onSearch: () => searchRef.current?.focus(),

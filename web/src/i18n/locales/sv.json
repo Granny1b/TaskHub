@@ -56,7 +56,9 @@
     "uploading": "Laddar upp…",
     "cancel": "Avbryt",
     "tooLarge": "Filen är för stor (max {{max}} MB)",
-    "notAllowed": "Filtypen tillåts inte"
+    "notAllowed": "Filtypen tillåts inte",
+    "openFile": "Öppna",
+    "noThumbnail": "Ingen förhandsvisning"
   },
   "conflict": {
     "banner": "Uppgiften ändrades medan du redigerade — granska ändringarna",

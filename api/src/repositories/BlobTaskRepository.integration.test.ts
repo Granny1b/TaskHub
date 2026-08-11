@@ -258,6 +258,22 @@ describe('blob metadata drives the list view', () => {
     expect(all.some((item) => item.id === created.document.id)).toBe(true);
   });
 
+  it('ignores the lists aggregate blob that shares the container', async () => {
+    // lists.json lives beside the task blobs. Treating it as a task fails
+    // validation and takes the whole list view down, which is what happens the
+    // moment a user creates their first list.
+    const listRepository = new BlobTaskListRepository(container);
+    const current = await listRepository.get();
+    const { document: withList } = createTaskList(current.document, { name: 'Maskin 9' }, ctx());
+    await listRepository.save(withList, current.etag.length === 0 ? null : current.etag);
+
+    const seeded = await seed('Syns i listan');
+    const summaries = await repository.list();
+
+    expect(summaries.some((item) => item.id === seeded.document.id)).toBe(true);
+    expect(summaries.some((item) => item.id === 'lists')).toBe(false);
+  });
+
   it('filters by user-defined list', async () => {
     const listId = '01JGZ0000000000000000ZZZ2';
     const grouped = await repository.create(
@@ -312,16 +328,21 @@ describe('the lists aggregate', () => {
   it('creates on first save and enforces the ETag afterwards', async () => {
     const listRepository = new BlobTaskListRepository(container);
 
+    // Deliberately tolerant of a container another test already wrote to: the
+    // claim under test is create-then-enforce-ETag, not an empty start.
     const initial = await listRepository.get();
-    expect(initial.document.lists).toEqual([]);
+    const isFirstWrite = initial.etag.length === 0;
 
-    const { document } = createTaskList(createTaskListsDocument(), { name: 'Maskin 7' }, ctx());
-    const saved = await listRepository.save(document, null);
+    const { document } = createTaskList(
+      isFirstWrite ? createTaskListsDocument() : initial.document,
+      { name: 'Maskin 7' },
+      ctx(),
+    );
+    const saved = await listRepository.save(document, isFirstWrite ? null : initial.etag);
     expect(saved.etag).not.toBe('');
 
     const loaded = await listRepository.get();
-    expect(loaded.document.lists).toHaveLength(1);
-    expect(loaded.document.lists[0]?.name).toBe('Maskin 7');
+    expect(loaded.document.lists.some((list) => list.name === 'Maskin 7')).toBe(true);
 
     // A stale ETag must lose, exactly as with tasks.
     const stale = createTaskList(loaded.document, { name: 'Andra' }, ctx());

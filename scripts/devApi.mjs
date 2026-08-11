@@ -24,6 +24,7 @@ import { extname, join, normalize, resolve } from 'node:path';
 
 const { TaskService } = await import('../api/dist/domain/taskService.js');
 const { ListService } = await import('../api/dist/domain/listService.js');
+const { AttachmentService } = await import('../api/dist/domain/attachmentService.js');
 const { InMemoryTaskRepository, InMemoryTaskListRepository } =
   await import('../api/dist/repositories/InMemoryTaskRepository.js');
 const shared = await import('@taskhub/shared');
@@ -41,17 +42,93 @@ const SHOULD_SEED = args.includes('--seed');
 const DEV_USER = 'dev-user';
 const context = () => shared.createContext(DEV_USER);
 
-const taskRepository = new InMemoryTaskRepository();
-const listRepository = new InMemoryTaskListRepository();
+/*
+  Storage: in-memory by default, real blob storage when a connection string is
+  present.
+
+  Attachments need the second mode. A SAS is signed against a real account and
+  the browser PUTs straight to it, so there is nothing in-memory storage can
+  stand in for — point this at Azurite to exercise the upload pipeline for real.
+*/
+const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
+const useBlobStorage = typeof connectionString === 'string' && connectionString.length > 0;
+
+let taskRepository;
+let listRepository;
+let attachments = null;
+
+if (useBlobStorage) {
+  const { BlobServiceClient } = await import('@azure/storage-blob');
+  const { BlobTaskRepository } = await import('../api/dist/repositories/BlobTaskRepository.js');
+  const { BlobTaskListRepository } =
+    await import('../api/dist/repositories/BlobTaskListRepository.js');
+  const { BlobAttachmentStorage, credentialFromConnectionString } =
+    await import('../api/dist/repositories/BlobAttachmentStorage.js');
+
+  const client = BlobServiceClient.fromConnectionString(connectionString);
+  const tasksContainer = client.getContainerClient('tasks');
+  const attachmentsContainer = client.getContainerClient('attachments');
+  await tasksContainer.createIfNotExists();
+  await attachmentsContainer.createIfNotExists();
+
+  /*
+    CORS, mirroring what infra/modules/storage.bicep configures in Azure.
+
+    Uploads go browser -> blob directly, so without this every upload fails at
+    the preflight with an opaque "Failed to fetch". The emulator starts with no
+    CORS rules at all, which makes local testing silently unlike production —
+    the one difference most likely to hide a real misconfiguration.
+
+    `x-ms-blob-type` is the header that matters: it is mandatory on a block blob
+    PUT, so omitting it from the allowed list breaks every upload.
+  */
+  await client.setProperties({
+    cors: [
+      {
+        allowedOrigins: '*',
+        allowedMethods: 'GET,HEAD,PUT,OPTIONS',
+        allowedHeaders: 'x-ms-blob-type,x-ms-blob-content-type,content-type,content-length',
+        exposedHeaders: 'etag,x-ms-request-id',
+        maxAgeInSeconds: 3600,
+      },
+    ],
+  });
+
+  taskRepository = new BlobTaskRepository(tasksContainer);
+  listRepository = new BlobTaskListRepository(tasksContainer);
+  attachments = new BlobAttachmentStorage(
+    attachmentsContainer,
+    credentialFromConnectionString(connectionString),
+  );
+} else {
+  taskRepository = new InMemoryTaskRepository();
+  listRepository = new InMemoryTaskListRepository();
+}
+
 const tasks = new TaskService(taskRepository);
 const lists = new ListService(listRepository);
+const attachmentService =
+  attachments === null ? null : new AttachmentService(taskRepository, attachments);
 
 /* -------------------------------------------------------------------------- */
 /* Seed data                                                                   */
 /* -------------------------------------------------------------------------- */
 
 async function seed() {
-  const created = await lists.create({ name: 'Maskin 7' }, null, context());
+  // Idempotent: blob storage persists between restarts, and re-seeding would
+  // otherwise stack duplicate lists and tasks on every launch.
+  const existing = await tasks.list({});
+  if (existing.length > 0) {
+    console.log(`Storage already has ${existing.length} task(s); skipping seed.`);
+    return;
+  }
+
+  const currentLists = await lists.list();
+  const created = await lists.create(
+    { name: 'Maskin 7' },
+    currentLists.etag.length > 0 ? currentLists.etag : null,
+    context(),
+  );
   const second = await lists.create({ name: 'Kundprojekt Volvo' }, created.etag, context());
 
   const gearbox = await tasks.create(
@@ -172,6 +249,13 @@ async function readBody(request) {
 }
 
 const ifMatch = (request) => request.headers['if-match'] ?? '';
+
+const noAttachments = () =>
+  new shared.DomainError(
+    'invalid_operation',
+    'Attachments need real blob storage. Start Azurite and set ' +
+      'AZURE_STORAGE_CONNECTION_STRING before running this server.',
+  );
 
 function requireIfMatch(request) {
   const value = ifMatch(request);
@@ -297,11 +381,46 @@ async function handleApi(request, response, url) {
       const result = await tasks.removeChild(id, segments[3], requireIfMatch(request), context());
       return sendJson(response, 200, result.document, result.etag);
     }
+    if (segments[2] === 'attachments' && segments[3] === 'sas' && method === 'POST') {
+      if (attachmentService === null) throw noAttachments();
+      const body = await readBody(request);
+      return sendJson(response, 200, await attachmentService.createUploadGrant(id, body));
+    }
+    if (segments[2] === 'attachments' && segments[3] === 'commit' && method === 'POST') {
+      if (attachmentService === null) throw noAttachments();
+      const body = await readBody(request);
+      const result = await attachmentService.commit(id, body, requireIfMatch(request), context());
+      return sendJson(
+        response,
+        201,
+        { attachment: result.attachment, task: result.saved.document },
+        result.saved.etag,
+      );
+    }
+    if (segments[2] === 'attachments' && segments.length === 4 && method === 'DELETE') {
+      if (attachmentService === null) throw noAttachments();
+      const result = await attachmentService.remove(
+        id,
+        segments[3],
+        requireIfMatch(request),
+        context(),
+      );
+      return sendJson(response, 200, result.document, result.etag);
+    }
     if (segments[2] === 'reorder' && method === 'POST') {
       const body = await readBody(request);
       const result = await tasks.reorder(id, body, requireIfMatch(request), context());
       return sendJson(response, 200, result.document, result.etag);
     }
+  }
+
+  /* Attachment read URLs ------------------------------------------------- */
+  if (segments[0] === 'attachments' && segments[3] === 'url' && method === 'GET') {
+    if (attachmentService === null) throw noAttachments();
+    const grant = await attachmentService.createReadGrant(segments[1], segments[2], {
+      thumbnail: url.searchParams.get('thumbnail') === 'true',
+    });
+    return sendJson(response, 200, grant);
   }
 
   return sendJson(response, 404, { type: 'not_found', title: 'No such route', status: 404 });
@@ -341,4 +460,9 @@ if (SHOULD_SEED) await seed();
 server.listen(PORT, () => {
   console.log(`Dev API on http://localhost:${PORT}`);
   console.log(`Serving ${STATIC_DIR}`);
+  console.log(
+    useBlobStorage
+      ? 'Storage: blob (attachments enabled)'
+      : 'Storage: in-memory (attachments disabled)',
+  );
 });

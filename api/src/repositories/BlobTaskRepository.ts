@@ -14,6 +14,12 @@ import {
 import type { ETagged, ITaskRepository, ListTasksFilter } from './ITaskRepository.js';
 
 /**
+ * Task blobs are `{ULID}.json`. Anything else in the container is not a task —
+ * see the note in `list()`.
+ */
+const TASK_BLOB_PATTERN = /^([0-9A-HJKMNP-TV-Z]{26})\.json$/;
+
+/**
  * Blob-backed task storage: one blob per main task, containing its subtasks.
  *
  * This file and its siblings in this directory are the only place in the API
@@ -41,9 +47,19 @@ export class BlobTaskRepository implements ITaskRepository {
       includeMetadata: true,
       includeTags: true,
     })) {
-      if (!blob.name.endsWith('.json')) continue;
+      /*
+        Match `{ULID}.json` specifically, not merely `*.json`.
 
-      const id = blob.name.slice(0, -'.json'.length);
+        The container also holds `lists.json` (the user-defined lists aggregate,
+        ADR-0004). A looser filter picks it up, fails to read task metadata from
+        it, falls back to opening it as a task document, and fails validation —
+        taking the whole list view down with it. That happens the moment a user
+        creates their first list, which is to say immediately.
+      */
+      const match = TASK_BLOB_PATTERN.exec(blob.name);
+      if (match === null) continue;
+
+      const id = match[1] as string;
       const tags = blob.tags ?? {};
 
       // Soft-deleted tasks are filtered from the tag, so a deleted task costs
