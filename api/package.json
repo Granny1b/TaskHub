@@ -1,0 +1,20 @@
+{
+  "name": "@taskhub/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SWA-managed Azure Functions for TaskHub",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "node ../scripts/clean.mjs",
+    "start": "func start"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.16.2",
+    "@azure/identity": "^4.13.1",
+    "@azure/storage-blob": "^12.33.0",
+    "@taskhub/shared": "*",
+    "zod": "^4.4.3"
+  }
+}

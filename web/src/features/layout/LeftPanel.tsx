@@ -1,0 +1,439 @@
+import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type Announcements,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import type { TaskList } from '@taskhub/shared';
+import { IconButton } from '../../components/Button.js';
+import { GripIcon, InboxIcon, ListIcon, PlusIcon, TrashIcon } from '../../components/icons.js';
+import { Skeleton } from '../../components/Skeleton.js';
+import {
+  useCreateList,
+  useDeleteList,
+  useLists,
+  useRenameList,
+  useReorderLists,
+} from '../../lib/queries.js';
+import { AccountButton } from '../settings/AccountButton.js';
+
+export type ListSelection = { kind: 'all' } | { kind: 'ungrouped' } | { kind: 'list'; id: string };
+
+interface LeftPanelProps {
+  selection: ListSelection;
+  onSelect: (selection: ListSelection) => void;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
+  /** Mobile drawers close on navigation; the desktop rail does not. */
+  onNavigate?: () => void;
+  /** Touch: the drag grip cannot wait for a hover that will never come. */
+  touch?: boolean;
+}
+
+/**
+ * The left panel: the user's own lists, plus the two views that always exist.
+ *
+ * Lists are user-created and named whatever the user likes. That is the
+ * grouping level above a main task, and this panel is the whole reason it
+ * exists — see ADR-0004.
+ *
+ * Collapses to a 64px icon rail on desktop, and becomes a slide-over drawer on
+ * mobile (see AppShell).
+ */
+export function LeftPanel({
+  selection,
+  onSelect,
+  collapsed,
+  onToggleCollapsed,
+  onNavigate,
+  touch = false,
+}: LeftPanelProps) {
+  const { t } = useTranslation();
+  const lists = useLists();
+  const createList = useCreateList();
+  const renameList = useRenameList();
+  const deleteList = useDeleteList();
+  const reorderLists = useReorderLists();
+
+  const [creating, setCreating] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+
+  const etag = lists.data?.etag ?? '';
+  const items = lists.data?.data ?? [];
+
+  const choose = (next: ListSelection): void => {
+    onSelect(next);
+    onNavigate?.();
+  };
+
+  /*
+    Drag to reorder the lists.
+
+    Simpler than the task list in one way that matters: every list lives in the
+    same blob under one ETag (ADR-0004), so a move is a single conditional write
+    that either lands whole or not at all. There is no renumbering across blobs
+    to be careful about here.
+  */
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = (event: DragEndEvent): void => {
+    const { active, over } = event;
+    if (over === null || active.id === over.id) return;
+
+    const ids = items.map((list) => list.id);
+    const toIndex = ids.indexOf(String(over.id));
+    if (toIndex === -1) return;
+
+    reorderLists.mutate({ movedId: String(active.id), toIndex, etag });
+  };
+
+  const announcements = useMemo<Announcements>(() => {
+    const nameOf = (id: string | number): string =>
+      items.find((list) => list.id === String(id))?.name ?? String(id);
+
+    return {
+      onDragStart: ({ active }) => t('dnd.picked', { name: nameOf(active.id) }),
+      onDragOver: ({ active, over }) =>
+        over === null || over.id === active.id
+          ? undefined
+          : t('dnd.over', { name: nameOf(over.id) }),
+      onDragEnd: ({ active, over }) =>
+        over === null
+          ? t('dnd.cancelled', { name: nameOf(active.id) })
+          : t('dnd.dropped', { name: nameOf(active.id) }),
+      onDragCancel: ({ active }) => t('dnd.cancelled', { name: nameOf(active.id) }),
+    };
+  }, [t, items]);
+
+  return (
+    <nav
+      aria-label={t('lists.title')}
+      className={`flex h-full flex-col border-r border-border-subtle bg-surface-raised transition-[width] duration-200 ${
+        collapsed ? 'w-16' : 'w-60'
+      }`}
+    >
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border-subtle px-3">
+        {/* Logo slot. An SVG that reads on both light and dark surfaces goes
+            here — see docs/TOKENS.md. */}
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-accent text-xs font-bold text-accent-contrast">
+          T
+        </span>
+        {!collapsed ? (
+          <span className="truncate text-sm font-semibold text-content">{t('app.name')}</span>
+        ) : null}
+        <span className="ml-auto hidden md:block">
+          {/* Not "close": it collapses to an icon rail, and a screen reader
+              hearing "Stäng" next to every other close control cannot tell
+              which one shuts what. */}
+          <IconButton
+            label={collapsed ? t('a11y.expandPanel') : t('a11y.collapsePanel')}
+            onClick={onToggleCollapsed}
+          >
+            <ListIcon className="h-4 w-4" />
+          </IconButton>
+        </span>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-2">
+        <PanelItem
+          icon={<InboxIcon className="h-4 w-4" />}
+          label={t('lists.all')}
+          active={selection.kind === 'all'}
+          collapsed={collapsed}
+          onClick={() => choose({ kind: 'all' })}
+        />
+        <PanelItem
+          icon={<ListIcon className="h-4 w-4" />}
+          label={t('lists.ungrouped')}
+          active={selection.kind === 'ungrouped'}
+          collapsed={collapsed}
+          onClick={() => choose({ kind: 'ungrouped' })}
+        />
+
+        {!collapsed ? (
+          <div className="mt-4 flex items-center justify-between px-2 pb-1">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-content-muted">
+              {t('lists.title')}
+            </span>
+            <IconButton label={t('lists.new')} onClick={() => setCreating(true)}>
+              <PlusIcon className="h-4 w-4" />
+            </IconButton>
+          </div>
+        ) : null}
+
+        {lists.isLoading ? (
+          <div className="space-y-1 px-2 py-1">
+            <Skeleton className="h-6 w-full" />
+            <Skeleton className="h-6 w-4/5" />
+          </div>
+        ) : null}
+
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          modifiers={[restrictToVerticalAxis]}
+          accessibility={{
+            announcements,
+            screenReaderInstructions: { draggable: t('dnd.instructions') },
+          }}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={items.map((list) => list.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            {items.map((list) =>
+              renamingId === list.id ? (
+                <ListNameInput
+                  key={list.id}
+                  initial={list.name}
+                  onCancel={() => setRenamingId(null)}
+                  onSubmit={(name) => {
+                    renameList.mutate({ id: list.id, name, etag });
+                    setRenamingId(null);
+                  }}
+                />
+              ) : (
+                <ListRow
+                  key={list.id}
+                  list={list}
+                  collapsed={collapsed}
+                  touch={touch}
+                  active={selection.kind === 'list' && selection.id === list.id}
+                  onClick={() => choose({ kind: 'list', id: list.id })}
+                  onRename={() => setRenamingId(list.id)}
+                  onDelete={() => deleteList.mutate({ id: list.id, etag })}
+                />
+              ),
+            )}
+          </SortableContext>
+        </DndContext>
+
+        {creating ? (
+          <ListNameInput
+            initial=""
+            onCancel={() => setCreating(false)}
+            onSubmit={(name) => {
+              // An empty lists blob has no ETag yet; the API treats a missing
+              // If-Match as "create" for exactly this first-list case.
+              createList.mutate({ name, etag: etag.length > 0 ? etag : null });
+              setCreating(false);
+            }}
+          />
+        ) : null}
+
+        {collapsed ? (
+          <div className="mt-2 flex justify-center">
+            <IconButton label={t('lists.new')} onClick={() => setCreating(true)}>
+              <PlusIcon className="h-4 w-4" />
+            </IconButton>
+          </div>
+        ) : null}
+      </div>
+
+      <AccountButton collapsed={collapsed} />
+    </nav>
+  );
+}
+
+function PanelItem({
+  icon,
+  label,
+  active,
+  collapsed,
+  onClick,
+  trailing,
+  grip,
+  gripAlways,
+  containerRef,
+  style,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  active: boolean;
+  collapsed: boolean;
+  onClick: () => void;
+  trailing?: React.ReactNode;
+  /**
+   * A drag handle laid over the row's icon rather than beside it. A 240px panel
+   * has no width to spare for a column that is empty most of the time, and the
+   * icon is decorative — swapping it for the grip on hover costs nothing and
+   * shifts nothing.
+   */
+  grip?: React.ReactNode;
+  /** True on touch, where the grip cannot wait for a hover to reveal it. */
+  gripAlways?: boolean;
+  containerRef?: (node: HTMLElement | null) => void;
+  style?: React.CSSProperties;
+}) {
+  // The two occupy the same 16px box, so exactly one of them may be visible at
+  // a time — otherwise a touch device draws the grip on top of the icon.
+  const iconVisibility =
+    grip === undefined
+      ? ''
+      : gripAlways === true
+        ? 'opacity-0'
+        : 'transition-opacity duration-150 group-hover:opacity-0';
+
+  return (
+    <div ref={containerRef} style={style} className="group relative">
+      <button
+        type="button"
+        onClick={onClick}
+        title={collapsed ? label : undefined}
+        aria-current={active ? 'page' : undefined}
+        className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors duration-150 ${
+          active
+            ? 'bg-surface-selected font-medium text-content'
+            : 'text-content-muted hover:bg-surface-hover hover:text-content'
+        } ${collapsed ? 'justify-center' : ''}`}
+      >
+        <span className={`${active ? 'text-accent' : ''} ${iconVisibility}`}>{icon}</span>
+        {!collapsed ? <span className="truncate">{label}</span> : null}
+      </button>
+
+      {/* Sits on top of the icon it replaces. Outside the button, because a
+          button cannot contain another button. */}
+      {grip !== undefined ? (
+        <span className="absolute left-2 top-1/2 -translate-y-1/2">{grip}</span>
+      ) : null}
+
+      {!collapsed && trailing !== undefined ? (
+        <span className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100">
+          {trailing}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function ListRow({
+  list,
+  collapsed,
+  touch,
+  active,
+  onClick,
+  onRename,
+  onDelete,
+}: {
+  list: TaskList;
+  collapsed: boolean;
+  touch: boolean;
+  active: boolean;
+  onClick: () => void;
+  onRename: () => void;
+  onDelete: () => void;
+}) {
+  const { t } = useTranslation();
+
+  // The collapsed rail is a column of 16px icons with no labels. There is
+  // nowhere for a grip to live that is not the icon itself, and no way to tell
+  // what you are dragging, so reordering waits until the panel is open.
+  const sortable = useSortable({ id: list.id, disabled: collapsed });
+
+  return (
+    <PanelItem
+      icon={<ListIcon className="h-4 w-4" />}
+      label={list.name}
+      active={active}
+      collapsed={collapsed}
+      onClick={onClick}
+      containerRef={sortable.setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(sortable.transform),
+        transition: sortable.transition,
+        ...(sortable.isDragging ? { opacity: 0.5, zIndex: 10, position: 'relative' } : {}),
+      }}
+      {...(collapsed
+        ? {}
+        : {
+            gripAlways: touch,
+            grip: (
+              <button
+                type="button"
+                ref={sortable.setActivatorNodeRef}
+                {...sortable.attributes}
+                {...sortable.listeners}
+                aria-label={t('dnd.handle', { name: list.name })}
+                title={t('dnd.handleShort')}
+                className={`flex h-4 w-4 cursor-grab touch-none items-center justify-center rounded text-content-muted transition-opacity duration-150 hover:text-content ${
+                  touch
+                    ? 'opacity-60'
+                    : 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100'
+                }`}
+              >
+                <GripIcon className="h-4 w-4" />
+              </button>
+            ),
+          })}
+      trailing={
+        <span className="flex items-center gap-0.5 bg-surface-raised">
+          <IconButton label={t('lists.rename')} onClick={onRename}>
+            <span aria-hidden className="text-xs">
+              ✎
+            </span>
+          </IconButton>
+          <IconButton label={t('lists.delete')} onClick={onDelete}>
+            <TrashIcon className="h-3.5 w-3.5" />
+          </IconButton>
+        </span>
+      }
+    />
+  );
+}
+
+function ListNameInput({
+  initial,
+  onSubmit,
+  onCancel,
+}: {
+  initial: string;
+  onSubmit: (name: string) => void;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslation();
+  const [value, setValue] = useState(initial);
+
+  return (
+    <input
+      autoFocus
+      value={value}
+      placeholder={t('lists.namePlaceholder')}
+      aria-label={t('lists.new')}
+      onChange={(event) => setValue(event.target.value)}
+      onBlur={() => {
+        if (value.trim().length > 0 && value.trim() !== initial) onSubmit(value.trim());
+        else onCancel();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' && value.trim().length > 0) {
+          event.preventDefault();
+          onSubmit(value.trim());
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          onCancel();
+        }
+      }}
+      className="mt-1 w-full rounded-md border border-accent bg-surface px-2 py-1.5 text-sm text-content outline-none"
+    />
+  );
+}

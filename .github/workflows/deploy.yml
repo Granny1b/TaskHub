@@ -1,0 +1,62 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One deployment at a time, and never cancel one midway — a half-uploaded app is
+# worse than a queued one.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to Azure Static Web Apps
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # Never deploy something that has not passed its own gates. This
+      # duplicates CI deliberately: a green CI run on an older commit is not
+      # evidence about this one.
+      - name: Verify
+        run: npm run verify
+
+      - name: Build web bundle
+        run: npm run bundle --workspace web
+
+      # Resolves the @taskhub/shared workspace link into a real dependency, so
+      # what deploys is exactly what was built and tested here.
+      - name: Stage API
+        run: node scripts/stageApi.mjs
+
+      - name: Deploy
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: upload
+          app_location: web/dist
+          api_location: api-deploy
+          # Both artefacts are already built above; letting the SWA build
+          # service rebuild them would run a different toolchain against
+          # untested output.
+          skip_app_build: true
+          skip_api_build: true
+          config_file_location: /

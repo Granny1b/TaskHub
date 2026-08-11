@@ -1,0 +1,126 @@
+{
+  "app": {
+    "name": "TaskHub",
+    "tagline": "Task management for Modig Machine Tool"
+  },
+  "views": {
+    "list": "List"
+  },
+  "columns": {
+    "expand": "Show subtasks",
+    "complete": "Done",
+    "date": "Date",
+    "title": "Task",
+    "comments": "Comments",
+    "status": "Status",
+    "completedDate": "Completed",
+    "attachments": "Attachments"
+  },
+  "task": {
+    "new": "New task",
+    "newSubtask": "New subtask",
+    "titlePlaceholder": "What needs doing?",
+    "commentsPlaceholder": "Comments",
+    "openSubtasks_one": "{{count}} open subtask",
+    "openSubtasks_other": "{{count}} open subtasks",
+    "subtaskProgress": "{{done}}/{{total}}",
+    "delete": "Delete",
+    "restore": "Restore",
+    "subtasks": "Subtasks",
+    "openDetails": "Open task"
+  },
+  "percent": {
+    "auto": "auto",
+    "backToAuto": "Back to auto",
+    "derivedFrom": "{{done}} of {{total}} subtasks",
+    "label": "Completion"
+  },
+  "lists": {
+    "title": "Lists",
+    "new": "New list",
+    "namePlaceholder": "List name",
+    "ungrouped": "Ungrouped",
+    "all": "All tasks",
+    "rename": "Rename",
+    "delete": "Delete list"
+  },
+  "filters": {
+    "all": "All",
+    "open": "Open",
+    "completed": "Completed",
+    "search": "Search"
+  },
+  "attachments": {
+    "add": "Add files",
+    "camera": "Take photo",
+    "drop": "Drop files here",
+    "uploading": "Uploading…",
+    "cancel": "Cancel",
+    "tooLarge": "File is too large (max {{max}} MB)",
+    "notAllowed": "File type not allowed",
+    "openFile": "Open",
+    "noThumbnail": "No preview"
+  },
+  "conflict": {
+    "banner": "This task changed while you were editing — review",
+    "review": "Review",
+    "reload": "Reload"
+  },
+  "empty": {
+    "noTasks": "No tasks yet",
+    "noTasksAction": "Create your first task",
+    "noResults": "No matches"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "loading": "Loading…",
+    "error": "Something went wrong",
+    "retry": "Try again"
+  },
+  "theme": {
+    "label": "Appearance",
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "swipe": {
+    "complete": "Done",
+    "reopen": "Undo"
+  },
+  "dnd": {
+    "handle": "Move {{name}}",
+    "handleShort": "Drag to move",
+    "instructions": "Press space to pick the row up. Move it with the arrow keys. Press space again to drop it, or Escape to cancel.",
+    "picked": "Picked up {{name}}.",
+    "over": "Moving to {{name}}.",
+    "dropped": "Dropped {{name}} in its new position.",
+    "cancelled": "Cancelled moving {{name}}."
+  },
+  "settings": {
+    "title": "Settings",
+    "open": "Open settings",
+    "account": "Account",
+    "language": "Language",
+    "subtasks": {
+      "title": "Where subtasks appear",
+      "inline": "Under the main task",
+      "inlineHint": "Subtasks expand in the list, just as in the workbook.",
+      "detail": "In the right-hand panel",
+      "detailHint": "One row per task in the list. Subtasks appear when you open the task."
+    },
+    "list": {
+      "title": "The list",
+      "showComments": "Show the Comments column",
+      "density": "Row height",
+      "compact": "Compact",
+      "comfortable": "Comfortable"
+    }
+  },
+  "a11y": {
+    "skipToContent": "Skip to task list",
+    "collapsePanel": "Collapse the side panel",
+    "expandPanel": "Expand the side panel"
+  }
+}

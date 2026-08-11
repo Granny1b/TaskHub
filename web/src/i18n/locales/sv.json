@@ -1,0 +1,126 @@
+{
+  "app": {
+    "name": "TaskHub",
+    "tagline": "Uppgiftshantering för Modig Machine Tool"
+  },
+  "views": {
+    "list": "Lista"
+  },
+  "columns": {
+    "expand": "Visa deluppgifter",
+    "complete": "Klar",
+    "date": "Datum",
+    "title": "Uppgift",
+    "comments": "Kommentarer",
+    "status": "Status",
+    "completedDate": "Färdig datum",
+    "attachments": "Bilagor"
+  },
+  "task": {
+    "new": "Ny uppgift",
+    "newSubtask": "Ny deluppgift",
+    "titlePlaceholder": "Vad ska göras?",
+    "commentsPlaceholder": "Kommentarer",
+    "openSubtasks_one": "{{count}} öppen deluppgift",
+    "openSubtasks_other": "{{count}} öppna deluppgifter",
+    "subtaskProgress": "{{done}}/{{total}}",
+    "delete": "Ta bort",
+    "restore": "Återställ",
+    "subtasks": "Deluppgifter",
+    "openDetails": "Öppna uppgift"
+  },
+  "percent": {
+    "auto": "auto",
+    "backToAuto": "Tillbaka till auto",
+    "derivedFrom": "{{done}} av {{total}} deluppgifter",
+    "label": "Färdigställandegrad"
+  },
+  "lists": {
+    "title": "Listor",
+    "new": "Ny lista",
+    "namePlaceholder": "Namn på listan",
+    "ungrouped": "Ogrupperade",
+    "all": "Alla uppgifter",
+    "rename": "Byt namn",
+    "delete": "Ta bort lista"
+  },
+  "filters": {
+    "all": "Alla",
+    "open": "Öppna",
+    "completed": "Klara",
+    "search": "Sök"
+  },
+  "attachments": {
+    "add": "Lägg till filer",
+    "camera": "Ta foto",
+    "drop": "Släpp filer här",
+    "uploading": "Laddar upp…",
+    "cancel": "Avbryt",
+    "tooLarge": "Filen är för stor (max {{max}} MB)",
+    "notAllowed": "Filtypen tillåts inte",
+    "openFile": "Öppna",
+    "noThumbnail": "Ingen förhandsvisning"
+  },
+  "conflict": {
+    "banner": "Uppgiften ändrades medan du redigerade — granska ändringarna",
+    "review": "Granska",
+    "reload": "Läs om"
+  },
+  "empty": {
+    "noTasks": "Inga uppgifter ännu",
+    "noTasksAction": "Skapa din första uppgift",
+    "noResults": "Inga träffar"
+  },
+  "common": {
+    "save": "Spara",
+    "cancel": "Avbryt",
+    "close": "Stäng",
+    "loading": "Laddar…",
+    "error": "Något gick fel",
+    "retry": "Försök igen"
+  },
+  "theme": {
+    "label": "Utseende",
+    "system": "System",
+    "light": "Ljust",
+    "dark": "Mörkt"
+  },
+  "swipe": {
+    "complete": "Klar",
+    "reopen": "Ångra"
+  },
+  "dnd": {
+    "handle": "Flytta {{name}}",
+    "handleShort": "Dra för att flytta",
+    "instructions": "Tryck på mellanslag för att lyfta raden. Flytta den med piltangenterna. Tryck på mellanslag igen för att släppa, eller Escape för att avbryta.",
+    "picked": "{{name}} lyftes.",
+    "over": "Flyttas till {{name}}.",
+    "dropped": "{{name}} släpptes på sin nya plats.",
+    "cancelled": "Flytten av {{name}} avbröts."
+  },
+  "settings": {
+    "title": "Inställningar",
+    "open": "Öppna inställningar",
+    "account": "Konto",
+    "language": "Språk",
+    "subtasks": {
+      "title": "Var deluppgifterna visas",
+      "inline": "Under huvuduppgiften",
+      "inlineHint": "Deluppgifterna fälls ut i listan, precis som i Excel-filen.",
+      "detail": "I panelen till höger",
+      "detailHint": "Listan visar en rad per uppgift. Deluppgifterna syns när du öppnar uppgiften."
+    },
+    "list": {
+      "title": "Listan",
+      "showComments": "Visa kolumnen Kommentarer",
+      "density": "Radhöjd",
+      "compact": "Kompakt",
+      "comfortable": "Luftig"
+    }
+  },
+  "a11y": {
+    "skipToContent": "Hoppa till uppgiftslistan",
+    "collapsePanel": "Fäll ihop sidopanelen",
+    "expandPanel": "Fäll ut sidopanelen"
+  }
+}

@@ -1,0 +1,4 @@
+# TaskHub is an internal, authenticated application. There is nothing here for
+# a crawler, and every route returns a login redirect to an anonymous request.
+User-agent: *
+Disallow: /

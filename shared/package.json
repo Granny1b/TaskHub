@@ -1,0 +1,26 @@
+{
+  "name": "@taskhub/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Domain model, validation schemas and configuration shared by the web app and the API",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "node ../scripts/clean.mjs"
+  },
+  "dependencies": {
+    "ulid": "^3.0.2",
+    "zod": "^4.4.3"
+  }
+}

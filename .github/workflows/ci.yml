@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same branch; the latest push is the one that matters.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # Matches .nvmrc and the SWA managed Functions runtime.
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # Runs the same five gates as `npm run verify` locally, but as separate
+      # steps so a failure names itself in the job summary instead of hiding in
+      # a wall of output.
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      # Starts Azurite itself; no service container needed.
+      - name: Integration tests (Azurite)
+        run: npm run test:integration
+
+      - name: Build web bundle
+        run: npm run bundle --workspace web
+
+  validate-infra:
+    name: Validate Bicep
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Catches template errors on every push rather than at deploy time, when
+      # the feedback loop is a failed deployment.
+      - name: Build and lint Bicep
+        run: |
+          az bicep install
+          az bicep build --file infra/main.bicep --outfile /tmp/main.json
