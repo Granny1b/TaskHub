@@ -7,6 +7,7 @@ import {
   patchNodeRequestSchema,
   patchTaskRequestSchema,
   reorderRequestSchema,
+  reorderTasksRequestSchema,
 } from '../domain/requests.js';
 import {
   created,
@@ -198,5 +199,32 @@ app.http('reorderChildren', {
 
     const saved = await service().reorder(id, input, ifMatch, mutation);
     return ok(saved.document, saved.etag);
+  }),
+});
+
+/**
+ * Move a main task in the manual order.
+ *
+ * `tasks/reorder` rather than `tasks/{id}/reorder`, which already belongs to the
+ * sibling reorder above: this operation is about the sequence of tasks, not
+ * about one task's children. The If-Match guards the moved task's blob.
+ */
+app.http('reorderTasks', {
+  methods: ['POST'],
+  authLevel: 'anonymous',
+  route: 'tasks/reorder',
+  handler: withAuth(async ({ request, mutation }) => {
+    const ifMatch = requireIfMatch(request);
+    const input = await readJson(request, reorderTasksRequestSchema);
+
+    const { saved, renumbered } = await service().reorderTasks(input, ifMatch, mutation);
+
+    const response = ok(saved.document, saved.etag);
+    // Surfaced rather than swallowed: non-zero means other tasks were rewritten
+    // to make room, and that pass is best effort (ADR-0034).
+    return {
+      ...response,
+      headers: { ...response.headers, 'X-TaskHub-Renumbered': String(renumbered) },
+    };
   }),
 });

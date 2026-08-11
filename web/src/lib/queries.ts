@@ -8,6 +8,7 @@ import {
 import { useCallback, useState } from 'react';
 import {
   createContext,
+  reorderChildren,
   setComplete,
   setCompletedDate,
   setPercent,
@@ -156,22 +157,133 @@ export function useReorderChildren() {
   const client = useQueryClient();
 
   return useMutation({
-    mutationFn: ({
-      id,
-      etag,
-      movedId,
-      toIndex,
-    }: {
-      id: string;
-      etag: string;
-      movedId: string;
-      toIndex: number;
-    }) => api.reorderChildren(id, { movedId, toIndex }, etag),
+    /**
+     * Optimistic, because a dragged row that springs back to where it was
+     * while the request is in flight reads as a failed drag.
+     */
+    onMutate: async (variables: ReorderChildrenVariables) => {
+      const key = queryKeys.task(variables.id);
+      await client.cancelQueries({ queryKey: key });
+
+      const previous = client.getQueryData<WithETag<TaskDocument>>(key);
+      if (previous === undefined) return { previous: undefined };
+
+      const root = reorderChildren(
+        previous.data.root,
+        previous.data.root.id,
+        variables.movedId,
+        variables.toIndex,
+        createContext(PREDICTION_ACTOR),
+      );
+      client.setQueryData(key, { data: { ...previous.data, root }, etag: previous.etag });
+
+      return { previous };
+    },
+
+    onError: (_error, variables, context) => {
+      if (context?.previous !== undefined) {
+        client.setQueryData(queryKeys.task(variables.id), context.previous);
+      }
+    },
+
+    mutationFn: ({ id, etag, movedId, toIndex }: ReorderChildrenVariables) =>
+      api.reorderChildren(id, { movedId, toIndex }, etag),
+
     onSuccess: (saved) => {
       cacheTask(client, saved);
       invalidateTaskLists(client);
     },
   });
+}
+
+interface ReorderChildrenVariables {
+  id: string;
+  etag: string;
+  movedId: string;
+  toIndex: number;
+}
+
+interface ReorderTasksVariables {
+  movedId: string;
+  /** The task the moved one now sits below. `null` means the top of the list. */
+  afterId: string | null;
+  etag: string;
+}
+
+/**
+ * Move a main task in the manual order.
+ *
+ * Every cached list is updated, not just the one being looked at: the same task
+ * appears in "Alla uppgifter", in its own list, and under whatever filter is
+ * active, and leaving the others stale means the row jumps back the moment the
+ * user switches view.
+ */
+export function useReorderTasks() {
+  const client = useQueryClient();
+
+  return useMutation({
+    onMutate: async (variables: ReorderTasksVariables) => {
+      await client.cancelQueries({ queryKey: ['tasks'] });
+
+      const previous = client.getQueriesData<TaskSummary[]>({ queryKey: ['tasks'] });
+      for (const [key, summaries] of previous) {
+        if (summaries === undefined) continue;
+        const moved = moveSummary(summaries, variables.movedId, variables.afterId);
+        if (moved !== null) client.setQueryData(key, moved);
+      }
+
+      return { previous };
+    },
+
+    onError: (_error, _variables, context) => {
+      for (const [key, summaries] of context?.previous ?? []) {
+        client.setQueryData(key, summaries);
+      }
+    },
+
+    mutationFn: ({ movedId, afterId, etag }: ReorderTasksVariables) =>
+      api.reorderTasks({ movedId, afterId }, etag),
+
+    onSuccess: (saved) => {
+      cacheTask(client, saved);
+      invalidateTaskLists(client);
+    },
+
+    onSettled: () => {
+      // The server owns the sparse-float values, and a move can renumber other
+      // tasks; the local splice is only ever a stand-in for the real answer.
+      invalidateTaskLists(client);
+    },
+  });
+}
+
+/**
+ * Splice one summary into its new position.
+ *
+ * Returns null when the move cannot be represented in this particular cached
+ * list — the moved task or its anchor is filtered out of it — so the caller
+ * leaves that list alone rather than inventing a position for it.
+ */
+function moveSummary(
+  summaries: readonly TaskSummary[],
+  movedId: string,
+  afterId: string | null,
+): TaskSummary[] | null {
+  const from = summaries.findIndex((summary) => summary.id === movedId);
+  if (from === -1) return null;
+
+  const without = [...summaries.slice(0, from), ...summaries.slice(from + 1)];
+
+  let to: number;
+  if (afterId === null) {
+    to = 0;
+  } else {
+    const anchor = without.findIndex((summary) => summary.id === afterId);
+    if (anchor === -1) return null;
+    to = anchor + 1;
+  }
+
+  return [...without.slice(0, to), summaries[from] as TaskSummary, ...without.slice(to)];
 }
 
 /* -------------------------------------------------------------------------- */

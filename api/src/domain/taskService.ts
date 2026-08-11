@@ -4,9 +4,12 @@ import {
   addChild,
   createTaskDocument,
   findNode,
+  indexAfter,
   isTaskComplete,
+  nextOrder,
   removeNode,
   reorderChildren,
+  reorderSiblings,
   setComplete,
   setCompletedDate,
   setDocumentList,
@@ -27,6 +30,7 @@ import type {
   PatchNodeRequest,
   PatchTaskRequest,
   ReorderRequest,
+  ReorderTasksRequest,
 } from './requests.js';
 
 /**
@@ -66,12 +70,28 @@ export class TaskService {
   }
 
   async create(input: CreateTaskRequest, ctx: MutationContext): Promise<ETagged<TaskDocument>> {
+    /*
+      One extra listing per create, to place the task at the end of the manual
+      order with a value of its own.
+
+      The alternative — every task created with the same `ORDER_STEP` — is
+      cheaper by one request and worse in practice: the first drag on such a
+      list finds no gap anywhere and has to renumber every task in one go
+      (ADR-0034). The listing is already the cheapest call in the API and a
+      create is not a hot path.
+
+      Two creates racing get the same order. That is harmless: they tie, and the
+      id tie-break puts the older one first.
+    */
+    const existing = await this.repository.list({});
+
     const document = createTaskDocument(
       {
         title: input.title,
         ...(input.date !== undefined ? { date: input.date } : {}),
         ...(input.comments !== undefined ? { comments: input.comments } : {}),
         listId: input.listId ?? null,
+        order: nextOrder(existing),
       },
       ctx,
     );
@@ -246,6 +266,133 @@ export class TaskService {
       parentId,
     });
     return saved;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Manual order of main tasks                                          */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Move a main task in the manual order, placing it after `afterId`
+   * (`null` = first).
+   *
+   * Normally one blob write: the moved task gets an order value between its new
+   * neighbours and nothing else is touched. See ADR-0034 for why this is not
+   * simply `reorderChildren` — main tasks are separate blobs, so there is no
+   * single ETag covering the sequence and no way to renumber them atomically.
+   *
+   * `renumbered` in the result is the number of *other* tasks rewritten. It is
+   * 0 for essentially every real move, and non-zero only when the float gap
+   * between two neighbours closed and the list had to be renumbered.
+   */
+  async reorderTasks(
+    input: ReorderTasksRequest,
+    ifMatch: string,
+    ctx: MutationContext,
+  ): Promise<{ saved: ETagged<TaskDocument>; renumbered: number }> {
+    if (input.afterId === input.movedId) {
+      throw new DomainError('invalid_operation', 'A task cannot be placed after itself', {
+        taskId: input.movedId,
+      });
+    }
+
+    // The full order, not the caller's filtered view: a search or an open-only
+    // filter hides tasks that still have to keep their place in the sequence.
+    const all = await this.repository.list({});
+    if (!all.some((summary) => summary.id === input.movedId)) {
+      throw new DomainError('not_found', `Task ${input.movedId} does not exist`, {
+        taskId: input.movedId,
+      });
+    }
+
+    const toIndex = indexAfter(all, input.movedId, input.afterId);
+    const { items, renormalised } = reorderSiblings(all, input.movedId, toIndex);
+
+    const moved = items.find((item) => item.id === input.movedId);
+    /* c8 ignore next -- reorderSiblings returns every input item; guard for the type. */
+    if (moved === undefined) throw new DomainError('not_found', 'Task vanished mid-reorder');
+
+    /*
+      The moved task goes first, and with the caller's If-Match.
+
+      Doing it in this order means a stale client is rejected before anything
+      else has been rewritten — the user's own edit is the one that has to be
+      guarded, and a 409 here leaves the list exactly as it was.
+    */
+    const saved = await this.writeOrder(input.movedId, moved.order, ifMatch, ctx, true);
+
+    let renumbered = 0;
+    if (renormalised) {
+      renumbered = await this.renumberOthers(items, input.movedId, ctx);
+    }
+
+    this.publish({
+      type: 'TasksReordered',
+      at: ctx.now,
+      actor: ctx.actor,
+      taskId: input.movedId,
+      renumbered,
+    });
+    return { saved, renumbered };
+  }
+
+  /**
+   * Rewrite the order of every task except the moved one, after the float gap
+   * ran out.
+   *
+   * Deliberately best effort. There is no transaction across blobs, so each task
+   * is read and conditionally written on its own ETag; one that loses a race
+   * with a concurrent edit is left alone rather than clobbered. Order values are
+   * self-healing — the next move renumbers again from whatever is there — so a
+   * partial pass costs a little sort precision, never a user's words.
+   *
+   * The count of tasks actually rewritten is returned so the caller can report
+   * it rather than pretend the pass was complete.
+   */
+  private async renumberOthers(
+    items: readonly TaskSummary[],
+    movedId: string,
+    ctx: MutationContext,
+  ): Promise<number> {
+    let renumbered = 0;
+
+    for (const item of items) {
+      if (item.id === movedId) continue;
+
+      const current = await this.repository.get(item.id);
+      if (current === null) continue;
+      if (current.document.root.order === item.order) continue;
+
+      try {
+        // Not stamped as updated: a renumber is a change of representation, not
+        // of the task. Stamping would show every task as edited by whoever
+        // happened to drag one row.
+        await this.writeOrder(item.id, item.order, current.etag, ctx, false, current);
+        renumbered += 1;
+      } catch (error) {
+        if (error instanceof DomainError && error.code === 'concurrency_conflict') continue;
+        throw error;
+      }
+    }
+
+    return renumbered;
+  }
+
+  private async writeOrder(
+    id: string,
+    order: number,
+    ifMatch: string,
+    ctx: MutationContext,
+    stamp: boolean,
+    known?: ETagged<TaskDocument>,
+  ): Promise<ETagged<TaskDocument>> {
+    const current = known ?? (await this.get(id));
+    const root = {
+      ...current.document.root,
+      order,
+      ...(stamp ? { updatedAt: ctx.now, updatedBy: ctx.actor } : {}),
+    };
+    return this.repository.replace({ ...current.document, root }, ifMatch);
   }
 
   /**

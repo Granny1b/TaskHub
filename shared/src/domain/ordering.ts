@@ -124,6 +124,47 @@ export function reorderSiblings<T extends Ordered & { id: string }>(
   return { items, renormalised: true };
 }
 
+/**
+ * Total order for main tasks: by `order`, then by id.
+ *
+ * The id tie-break is what makes the list deterministic rather than merely
+ * usually-right. Tasks created before ordering existed all carry the same
+ * `ORDER_STEP`, and two tasks created in the same request can too; ULIDs sort
+ * by creation time, so ties fall back to the order things were raised in —
+ * which is what the list showed before any of this existed.
+ */
+export function compareByOrderThenId(a: Ordered & { id: string }, b: Ordered & { id: string }) {
+  return a.order - b.order || a.id.localeCompare(b.id);
+}
+
+/**
+ * Translate "put it after this one" into the index `reorderSiblings` wants.
+ *
+ * Drag-and-drop over a *filtered* list cannot send an index: the row below the
+ * drop point may not be the next item in the true order, and on a searched or
+ * open-only list it usually is not. An anchor id survives that, because the
+ * server resolves it against the full ordering it holds. `null` means the head.
+ *
+ * Returns an index into the list with the moved item already removed, matching
+ * what `reorderSiblings` does internally.
+ */
+export function indexAfter<T extends Ordered & { id: string }>(
+  items: readonly T[],
+  movedId: string,
+  afterId: string | null,
+): number {
+  // The same total order the list view is sorted by, so an index computed here
+  // means the same thing as an index into what the user is looking at.
+  const without = [...items].sort(compareByOrderThenId).filter((item) => item.id !== movedId);
+  if (afterId === null) return 0;
+
+  const anchor = without.findIndex((item) => item.id === afterId);
+  // An anchor that is gone — deleted, or filtered out under a stale client
+  // list — means the drop target no longer exists. Appending is the least
+  // surprising answer: nothing else moves.
+  return anchor === -1 ? without.length : anchor + 1;
+}
+
 /** Force a renumber of a sibling list, preserving current relative order. */
 export function renormalise<T extends Ordered>(siblings: readonly T[]): T[] {
   const sorted = sortByOrder(siblings);

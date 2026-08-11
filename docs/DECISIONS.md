@@ -746,3 +746,77 @@ arrive as `undefined` for everyone with a stored blob; a test covers that case.
 
 **Not decided here.** Nothing about the preference is sent to the API, so no
 schema, endpoint or migration changes.
+
+---
+
+## ADR-0034 — Main tasks are ordered by a value in their own blob
+
+**Date:** 2026-08-11 · **Status:** accepted
+
+**Context.** Drag-to-reorder. Subtasks were already solved: siblings live inside
+one document under one ETag, so `reorderSiblings` rewrites one number and one
+conditional write commits it atomically (§8, ADR-0001).
+
+Main tasks are not siblings in anything. Each is its own blob, listed by name,
+and the list view was ordered by ULID — creation order, with no way to express a
+manual sequence. There is no parent document to hold the sequence and no single
+ETag covering it.
+
+**Options.**
+
+1. **A sequence blob** (`order.json`, or a field on `lists.json`). One small
+   write per reorder, atomic. But it becomes a second source of truth that every
+   create and delete must maintain, and it is a lock: two people reordering
+   anything contend on one ETag. It also has to answer for tasks it has never
+   heard of.
+2. **Order on the task**, mirrored into blob metadata. No new aggregate, no
+   contention between people reordering different parts of the list, and the
+   list view keeps reading a single listing. The cost is that a _renumber_ —
+   when the float gap between two neighbours is exhausted — spans blobs and
+   cannot be atomic.
+3. **String fractional indexing** (keys like `a0`, `a0V`), which never needs
+   renumbering. It would mean replacing the numeric ordering the domain already
+   uses for subtasks and lists, tested and shipped, to avoid a case that needs
+   ~20 consecutive drops into the same gap.
+
+**Decision.** Option 2. `root.order` is the truth; `taskorder` in the blob
+metadata is the cache the listing sorts by. `compareByOrderThenId` is the total
+order, and the id tie-break means tasks written before this existed keep exactly
+the order they had.
+
+**Consequences, stated plainly.**
+
+- **A normal move is one blob write.** The moved task gets a value between its
+  new neighbours, guarded by the caller's `If-Match`. Nothing else is touched.
+- **A renumber is not atomic.** When no float fits between the neighbours, every
+  other task is renumbered to whole thousands, each read and conditionally
+  written on its own ETag. A task that loses a race with a concurrent edit is
+  skipped rather than clobbered, so the pass can be partial. That is the right
+  trade: order values are self-healing — the next move renumbers again from
+  whatever is there — and the alternative risks overwriting someone's words to
+  tidy a sort key. The number of tasks rewritten comes back in the response as
+  `X-TaskHub-Renumbered`, and in the `TasksReordered` event, so a partial pass is
+  visible rather than silent.
+- **Creating a task costs one extra listing.** `create` reads the existing
+  summaries to compute `nextOrder`, so every task starts with a value of its own.
+  Without it every task would share `ORDER_STEP`, no gap would exist anywhere,
+  and the very first drag would renumber the entire list. A listing is the
+  cheapest call in the API and a create is not a hot path; see `docs/COSTS.md`.
+- **Two creates racing get the same order.** They tie, and the id tie-break puts
+  the older one first. Not worth a lock.
+
+**The API is anchored, not indexed.** `POST /api/tasks/reorder` takes
+`{ movedId, afterId }`, where `afterId: null` means the head — deliberately
+unlike `POST /api/tasks/{id}/reorder`, which takes a `toIndex` for children. A
+client reordering children can see all of them, so its index and the server's
+agree. A client reordering main tasks is nearly always looking at a filtered or
+searched subset, where row 3 on screen is not task 3 in the true order. An
+anchor id survives that; an index does not.
+
+**Ordering is global, not per list.** A task keeps its place when it moves
+between lists, and every view is a subsequence of one order. Per-list ordering
+would need a position per list per task and an answer for "Alla uppgifter".
+
+**Not decided here.** Reordering the user-defined lists in the side panel. The
+API for it has existed since Phase 4 (`POST /api/lists/reorder`) and is
+unconnected to any UI.

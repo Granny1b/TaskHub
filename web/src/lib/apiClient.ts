@@ -223,6 +223,20 @@ export const api = {
     return request<TaskDocument>(`/tasks/${id}/reorder`, { method: 'POST', body: input, ifMatch });
   },
 
+  /**
+   * Move a main task in the manual order.
+   *
+   * `afterId` rather than an index, because the list on screen is usually a
+   * filtered subset and its row numbers are not the true positions. `null`
+   * means the top of the list. The If-Match guards the moved task.
+   */
+  async reorderTasks(
+    input: { movedId: string; afterId: string | null },
+    ifMatch: string,
+  ): Promise<WithETag<TaskDocument>> {
+    return request<TaskDocument>('/tasks/reorder', { method: 'POST', body: input, ifMatch });
+  },
+
   /* ---------------------------------------------------------------------- */
   /* Attachments                                                             */
   /* ---------------------------------------------------------------------- */

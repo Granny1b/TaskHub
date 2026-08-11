@@ -1,5 +1,6 @@
 import {
   DomainError,
+  compareByOrderThenId,
   createTaskListsDocument,
   isDeleted,
   toTaskSummary,
@@ -54,8 +55,9 @@ export class InMemoryTaskRepository implements ITaskRepository {
       summaries.push(summary);
     }
 
-    // ULIDs sort by creation time, so this is newest-last without a sort key.
-    return summaries.sort((a, b) => a.id.localeCompare(b.id));
+    // Manual order first; ULIDs sort by creation time, so the tie-break leaves
+    // never-reordered tasks newest-last exactly as before.
+    return summaries.sort(compareByOrderThenId);
   }
 
   async get(id: string): Promise<ETagged<TaskDocument> | null> {

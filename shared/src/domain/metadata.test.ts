@@ -9,6 +9,7 @@ import {
   toBlobMetadata,
   toBlobTags,
 } from './metadata.js';
+import { ORDER_STEP } from './ordering.js';
 import { ctx, document, mainTask, taskWithChildren } from './__testing__/fixtures.js';
 
 describe('metadata text encoding', () => {
@@ -157,5 +158,34 @@ describe('fromBlobMetadata', () => {
     const doc = document();
     const metadata = { ...toBlobMetadata(doc), [TASK_METADATA_KEYS.completedDate]: 'garbage' };
     expect(fromBlobMetadata(doc.id, metadata)?.completedDate).toBeNull();
+  });
+});
+
+describe('manual order', () => {
+  it('round-trips a fractional order value', () => {
+    // Sparse floats are the whole point: a move between two neighbours writes
+    // a value like 1500, and after enough moves 1437.5. parseInt would land on
+    // 1437 and silently change the position.
+    const doc = document();
+    const ordered = { ...doc, root: { ...doc.root, order: 1437.5 } };
+    const metadata = toBlobMetadata(ordered);
+
+    expect(fromBlobMetadata(doc.id, metadata)?.order).toBe(1437.5);
+  });
+
+  it('falls back to ORDER_STEP for a task written before ordering existed', () => {
+    // Legacy blobs carry no order metadata. They all land on the same value and
+    // tie-break by id, which is the creation order the list used to show.
+    const doc = document();
+    const metadata = { ...toBlobMetadata(doc) };
+    delete metadata[TASK_METADATA_KEYS.order];
+
+    expect(fromBlobMetadata(doc.id, metadata)?.order).toBe(ORDER_STEP);
+  });
+
+  it('falls back rather than producing NaN from a corrupt value', () => {
+    const doc = document();
+    const metadata = { ...toBlobMetadata(doc), [TASK_METADATA_KEYS.order]: 'sideways' };
+    expect(fromBlobMetadata(doc.id, metadata)?.order).toBe(ORDER_STEP);
   });
 });

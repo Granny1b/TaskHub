@@ -75,6 +75,21 @@ export const reorderRequestSchema = z.object({
 });
 export type ReorderRequest = z.infer<typeof reorderRequestSchema>;
 
+/**
+ * Reordering main tasks is anchored to a neighbour, not to an index.
+ *
+ * Deliberately unlike the sibling reorder above, which takes `toIndex`. Children
+ * are all present in one document, so the client's index and the server's agree.
+ * Main tasks are separate blobs and the client is usually looking at a filtered
+ * or searched subset, where row 3 on screen is not task 3 in the true order.
+ * `afterId: null` means the head of the list.
+ */
+export const reorderTasksRequestSchema = z.object({
+  movedId: ulidSchema,
+  afterId: ulidSchema.nullable(),
+});
+export type ReorderTasksRequest = z.infer<typeof reorderTasksRequestSchema>;
+
 /* -------------------------------------------------------------------------- */
 /* Lists                                                                       */
 /* -------------------------------------------------------------------------- */

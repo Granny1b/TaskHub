@@ -1,9 +1,29 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type Announcements,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import type { TaskNode, TaskSummary } from '@taskhub/shared';
 import { Button } from '../../components/Button.js';
 import { EmptyState } from '../../components/EmptyState.js';
-import { InboxIcon } from '../../components/icons.js';
+import { GripIcon, InboxIcon } from '../../components/icons.js';
 import { TaskListSkeleton } from '../../components/Skeleton.js';
 import type { PatchNode, TaskFilter } from '../../lib/apiClient.js';
 import {
@@ -11,6 +31,8 @@ import {
   useCreateTask,
   usePatchNode,
   useRemoveChild,
+  useReorderChildren,
+  useReorderTasks,
   useTask,
   useTasks,
 } from '../../lib/queries.js';
@@ -71,6 +93,8 @@ export function TaskListView({
   const createTask = useCreateTask();
   const addChild = useAddChild();
   const removeChild = useRemoveChild();
+  const reorderTasks = useReorderTasks();
+  const reorderChildren = useReorderChildren();
 
   /*
     Subtask placement is a personal preference (settings, bottom left).
@@ -101,6 +125,89 @@ export function TaskListView({
     });
   }, []);
 
+  /*
+    Drag to reorder.
+
+    A distance constraint on the pointer, not an immediate grab: without it the
+    row's own click handlers — open the detail pane, start an inline edit —
+    would be swallowed by a drag that never happened. Touch waits instead, so a
+    finger dragged down the list scrolls it rather than picking a row up. The
+    keyboard sensor is the reason the handle is a real button: space picks the
+    row up, the arrow keys move it, space drops it.
+  */
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const summaries = tasks.data ?? [];
+  const summaryIds = useMemo(() => summaries.map((summary) => summary.id), [summaries]);
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (over === null || active.id === over.id) return;
+
+      const activeData = active.data.current as DragItemData | undefined;
+      const overData = over.data.current as DragItemData | undefined;
+      // A subtask dropped on the main list, or the reverse. dnd-kit reports the
+      // nearest droppable regardless of which context it belongs to, so the
+      // guard is here rather than in the collision detection.
+      if (activeData === undefined || activeData.type !== overData?.type) return;
+
+      const movedId = String(active.id);
+      const overId = String(over.id);
+
+      if (activeData.type === 'task') {
+        const from = summaryIds.indexOf(movedId);
+        const to = summaryIds.indexOf(overId);
+        if (from === -1 || to === -1) return;
+
+        // The anchor is read from the list as it will look after the move, so
+        // it means the same thing to the server as it does on screen.
+        const reordered = arrayMove(summaryIds, from, to);
+        const position = reordered.indexOf(movedId);
+        reorderTasks.mutate({
+          movedId,
+          afterId: position === 0 ? null : (reordered[position - 1] ?? null),
+          etag: activeData.etag,
+        });
+        return;
+      }
+
+      const toIndex = activeData.siblingIds.indexOf(overId);
+      if (toIndex === -1) return;
+      reorderChildren.mutate({
+        id: activeData.taskId,
+        movedId,
+        toIndex,
+        etag: activeData.etag,
+      });
+    },
+    [summaryIds, reorderTasks, reorderChildren],
+  );
+
+  /**
+   * Spoken feedback for a keyboard drag. Without this dnd-kit falls back to
+   * English defaults, which in a Swedish-first app is worse than silence.
+   */
+  const announcements = useMemo<Announcements>(
+    () => ({
+      onDragStart: ({ active }) => t('dnd.picked', { name: nameOf(active.id, summaries) }),
+      onDragOver: ({ active, over }) =>
+        over === null || over.id === active.id
+          ? undefined
+          : t('dnd.over', { name: nameOf(over.id, summaries) }),
+      onDragEnd: ({ active, over }) =>
+        over === null
+          ? t('dnd.cancelled', { name: nameOf(active.id, summaries) })
+          : t('dnd.dropped', { name: nameOf(active.id, summaries) }),
+      onDragCancel: ({ active }) => t('dnd.cancelled', { name: nameOf(active.id, summaries) }),
+    }),
+    [t, summaries],
+  );
+
   if (tasks.isLoading) return <TaskListSkeleton />;
 
   if (tasks.isError) {
@@ -116,8 +223,6 @@ export function TaskListView({
       />
     );
   }
-
-  const summaries = tasks.data ?? [];
 
   return (
     <div className="flex h-full flex-col">
@@ -143,89 +248,112 @@ export function TaskListView({
         instead of crushing its columns — a dense table is better scrolled than
         squeezed.
       */}
-      <div className="flex-1 overflow-auto">
-        <div className={compact ? '' : 'min-w-[820px]'}>
-          {!compact ? (
-            <div
-              className="sticky top-0 z-10 grid gap-x-2 border-b border-border-subtle bg-surface-raised px-2 py-1.5"
-              style={{ gridTemplateColumns: template }}
-              role="row"
-            >
-              {visibleColumns.map((column) => (
-                <HeaderCell
-                  key={column.id}
-                  column={column}
-                  width={widthOf(column)}
-                  onResize={(width) => setWidth(column.id, width)}
-                />
-              ))}
-            </div>
-          ) : null}
+      {/*
+        One DndContext for the whole list, main tasks and subtasks alike.
 
-          {summaries.length === 0 && !creating ? (
-            <EmptyState
-              icon={<InboxIcon className="h-8 w-8" />}
-              title={t('empty.noTasks')}
-              action={
-                <Button variant="primary" onClick={() => setCreating(true)}>
-                  {t('empty.noTasksAction')}
-                </Button>
-              }
-            />
-          ) : (
-            summaries.map((summary) => (
-              <TaskRowContainer
-                key={summary.id}
-                summary={summary}
-                expanded={inlineSubtasks && expanded.has(summary.id)}
-                selected={selectedTaskId === summary.id}
-                gridTemplate={template}
-                compact={compact}
-                rowDensity={preferences.rowDensity}
-                showComments={preferences.showComments}
-                inlineSubtasks={inlineSubtasks}
-                onToggleExpand={() => toggleExpand(summary.id)}
-                onSelect={() => onSelectTask(summary.id)}
-                onPatch={(nodeId, nodePatch, etag) =>
-                  patch.mutate({
-                    taskId: summary.id,
-                    ...(nodeId !== undefined ? { childId: nodeId } : {}),
-                    patch: nodePatch,
-                    etag,
-                  })
-                }
-                onAddChild={(title, etag) => addChild.mutate({ id: summary.id, etag, title })}
-                onRemoveChild={(childId, etag) =>
-                  removeChild.mutate({ id: summary.id, childId, etag })
-                }
-                onOpenPercentSheet={
-                  compact ? (node) => setPercentSheetFor({ taskId: summary.id, node }) : undefined
+        Nesting a second context inside each expanded row would be the obvious
+        reading of "two sortable lists", and it is a trap: the inner and outer
+        contexts both claim the same pointer event. Instead every draggable
+        carries what it is in its data, and the drop handler refuses to mix them.
+      */}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        modifiers={[restrictToVerticalAxis]}
+        accessibility={{
+          announcements,
+          screenReaderInstructions: { draggable: t('dnd.instructions') },
+        }}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="flex-1 overflow-auto">
+          <div className={compact ? '' : 'min-w-[820px]'}>
+            {!compact ? (
+              <div
+                className="sticky top-0 z-10 grid gap-x-2 border-b border-border-subtle bg-surface-raised px-2 py-1.5"
+                style={{ gridTemplateColumns: template }}
+                role="row"
+              >
+                {visibleColumns.map((column) => (
+                  <HeaderCell
+                    key={column.id}
+                    column={column}
+                    width={widthOf(column)}
+                    onResize={(width) => setWidth(column.id, width)}
+                  />
+                ))}
+              </div>
+            ) : null}
+
+            {summaries.length === 0 && !creating ? (
+              <EmptyState
+                icon={<InboxIcon className="h-8 w-8" />}
+                title={t('empty.noTasks')}
+                action={
+                  <Button variant="primary" onClick={() => setCreating(true)}>
+                    {t('empty.noTasksAction')}
+                  </Button>
                 }
               />
-            ))
-          )}
+            ) : (
+              <SortableContext items={summaryIds} strategy={verticalListSortingStrategy}>
+                {summaries.map((summary) => (
+                  <TaskRowContainer
+                    key={summary.id}
+                    summary={summary}
+                    expanded={inlineSubtasks && expanded.has(summary.id)}
+                    selected={selectedTaskId === summary.id}
+                    gridTemplate={template}
+                    compact={compact}
+                    rowDensity={preferences.rowDensity}
+                    showComments={preferences.showComments}
+                    inlineSubtasks={inlineSubtasks}
+                    onToggleExpand={() => toggleExpand(summary.id)}
+                    onSelect={() => onSelectTask(summary.id)}
+                    onPatch={(nodeId, nodePatch, etag) =>
+                      patch.mutate({
+                        taskId: summary.id,
+                        ...(nodeId !== undefined ? { childId: nodeId } : {}),
+                        patch: nodePatch,
+                        etag,
+                      })
+                    }
+                    onAddChild={(title, etag) => addChild.mutate({ id: summary.id, etag, title })}
+                    onRemoveChild={(childId, etag) =>
+                      removeChild.mutate({ id: summary.id, childId, etag })
+                    }
+                    onOpenPercentSheet={
+                      compact
+                        ? (node) => setPercentSheetFor({ taskId: summary.id, node })
+                        : undefined
+                    }
+                  />
+                ))}
+              </SortableContext>
+            )}
 
-          {creating ? (
-            <NewTaskRow
-              compact={compact}
-              gridTemplate={template}
-              onCancel={() => setCreating(false)}
-              onCreate={(title) => {
-                createTask.mutate({ title, listId: activeListId });
-                setCreating(false);
-              }}
-            />
-          ) : summaries.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => setCreating(true)}
-              className="w-full px-4 py-2.5 text-left text-sm text-content-muted hover:bg-surface-hover hover:text-content"
-            >
-              + {t('task.new')}
-            </button>
-          ) : null}
+            {creating ? (
+              <NewTaskRow
+                compact={compact}
+                gridTemplate={template}
+                onCancel={() => setCreating(false)}
+                onCreate={(title) => {
+                  createTask.mutate({ title, listId: activeListId });
+                  setCreating(false);
+                }}
+              />
+            ) : summaries.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setCreating(true)}
+                className="w-full px-4 py-2.5 text-left text-sm text-content-muted hover:bg-surface-hover hover:text-content"
+              >
+                + {t('task.new')}
+              </button>
+            ) : null}
+          </div>
         </div>
-      </div>
+      </DndContext>
 
       {percentSheetFor !== null ? (
         <PercentSheetContainer
@@ -280,10 +408,25 @@ function TaskRowContainer({
   onRemoveChild: (childId: string, etag: string) => void;
   onOpenPercentSheet?: ((node: TaskNode) => void) | undefined;
 }) {
+  const { t } = useTranslation();
   const needsDocument = expanded || selected;
   const query = useTask(needsDocument ? summary.id : null);
 
   const etag = query.data?.etag ?? summary.etag ?? '';
+
+  /*
+    The ETag travels with the draggable.
+
+    The drop handler lives in the list, which has summaries but no fresh ETags;
+    reading one out of the cache at drop time would race the row's own loads.
+    Carrying it in the drag data means the token sent is the one that was
+    current when the row was picked up — and if it has since gone stale, the
+    server says 409 and the optimistic move rolls back, which is the point.
+  */
+  const sortable = useSortable({
+    id: summary.id,
+    data: { type: 'task', etag } satisfies DragItemData,
+  });
 
   return (
     <TaskRow
@@ -297,6 +440,33 @@ function TaskRowContainer({
       showComments={showComments}
       inlineSubtasks={inlineSubtasks}
       busy={query.isFetching && query.data === undefined}
+      etag={etag}
+      rowRef={sortable.setNodeRef}
+      rowStyle={{
+        transform: CSS.Transform.toString(sortable.transform),
+        transition: sortable.transition,
+      }}
+      dragging={sortable.isDragging}
+      dragHandle={
+        <button
+          type="button"
+          ref={sortable.setActivatorNodeRef}
+          {...sortable.attributes}
+          {...sortable.listeners}
+          aria-label={t('dnd.handle', { name: summary.title })}
+          title={t('dnd.handleShort')}
+          onClick={(event) => event.stopPropagation()}
+          className={`flex cursor-grab touch-none items-center justify-center rounded text-content-muted transition-opacity duration-150 hover:bg-surface-hover hover:text-content ${
+            compact
+              ? // A touch screen has no hover to reveal it with, so it stays
+                // visible — quiet, and with a full-height target to hit.
+                'h-11 w-5 opacity-60'
+              : 'h-6 w-5 opacity-0 focus-visible:opacity-100 group-hover/row:opacity-100'
+          }`}
+        >
+          <GripIcon className="h-4 w-4" />
+        </button>
+      }
       onToggleExpand={onToggleExpand}
       onSelect={onSelect}
       onPatch={(nodeId, patch) => onPatch(nodeId, patch, etag)}
@@ -305,6 +475,24 @@ function TaskRowContainer({
       {...(onOpenPercentSheet !== undefined ? { onOpenPercentSheet } : {})}
     />
   );
+}
+
+/**
+ * What a draggable carries with it.
+ *
+ * `type` is what stops a subtask being dropped into the main list: dnd-kit
+ * reports the nearest droppable whatever context it belongs to, so the two
+ * sortable lists have to be told apart at drop time. Subtasks also carry their
+ * sibling ids, because the index the server wants is an index among siblings,
+ * not among the rows on screen.
+ */
+export type DragItemData =
+  | { type: 'task'; etag: string }
+  | { type: 'child'; taskId: string; siblingIds: string[]; etag: string };
+
+/** The title behind a drag id, for the screen-reader announcements. */
+function nameOf(id: string | number, summaries: readonly TaskSummary[]): string {
+  return summaries.find((summary) => summary.id === String(id))?.title ?? String(id);
 }
 
 function PercentSheetContainer({
@@ -395,6 +583,8 @@ function NewTaskRow({
       className="grid items-center gap-x-2 border-b border-border-subtle px-2 py-1.5"
       style={{ gridTemplateColumns: gridTemplate }}
     >
+      {/* drag, expand, complete, date — the input starts at Uppgift. */}
+      <div />
       <div />
       <div />
       <div />

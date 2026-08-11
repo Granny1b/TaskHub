@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, type CSSProperties, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   countChildren,
   isTaskComplete,
@@ -10,7 +12,8 @@ import {
 } from '@taskhub/shared';
 import { Checkbox } from '../../components/Checkbox.js';
 import { IconButton } from '../../components/Button.js';
-import { ChevronRightIcon, PaperclipIcon, PlusIcon } from '../../components/icons.js';
+import { ChevronRightIcon, GripIcon, PaperclipIcon, PlusIcon } from '../../components/icons.js';
+import type { DragItemData } from './TaskListView.js';
 import type { PatchNode } from '../../lib/apiClient.js';
 import { InlineDate, InlineText } from './InlineEdit.js';
 import { PercentControl } from './PercentControl.js';
@@ -42,6 +45,15 @@ interface TaskRowProps extends RowCallbacks {
    */
   inlineSubtasks: boolean;
   busy?: boolean;
+
+  /** The freshest concurrency token for this task, for subtask drags. */
+  etag: string;
+  /** Sortable wiring, owned by the container that calls `useSortable`. */
+  rowRef: (node: HTMLElement | null) => void;
+  rowStyle: CSSProperties;
+  dragging: boolean;
+  /** The grip, rendered by the container so the row stays free of dnd-kit. */
+  dragHandle: ReactNode;
 }
 
 /**
@@ -63,6 +75,11 @@ export function TaskRow({
   showComments,
   inlineSubtasks,
   busy,
+  etag,
+  rowRef,
+  rowStyle,
+  dragging,
+  dragHandle,
   onPatch,
   onAddChild,
   onRemoveChild,
@@ -122,11 +139,15 @@ export function TaskRow({
   if (compact) {
     return (
       <div
-        className={`border-b border-border-subtle ${selected ? 'bg-surface-selected' : ''} ${
-          busy === true ? 'opacity-60' : ''
-        }`}
+        ref={rowRef}
+        style={rowStyle}
+        className={`group/row border-b border-border-subtle bg-surface ${
+          selected ? 'bg-surface-selected' : ''
+        } ${busy === true ? 'opacity-60' : ''} ${dragging ? 'z-10 opacity-50 shadow-lg' : ''}`}
       >
         <div className="flex items-start gap-1 px-2 py-1.5">
+          <span className="flex items-center">{dragHandle}</span>
+
           <Checkbox
             checked={complete}
             label={t('columns.complete')}
@@ -191,26 +212,21 @@ export function TaskRow({
 
         {expanded ? (
           <div className="pb-1 pl-6">
-            {children.map((child) => (
-              <div
-                key={child.id}
-                className="flex items-center gap-1 border-l border-border-subtle pl-2"
-              >
-                <Checkbox
-                  checked={isTaskComplete(child)}
-                  label={t('columns.complete')}
-                  touchTarget
-                  onChange={(next) => onPatch(child.id, { isComplete: next })}
+            <SortableContext
+              items={children.map((child) => child.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {children.map((child) => (
+                <CompactSubtaskRow
+                  key={child.id}
+                  node={child}
+                  taskId={summary.id}
+                  siblingIds={children.map((sibling) => sibling.id)}
+                  etag={etag}
+                  onPatch={(patch) => onPatch(child.id, patch)}
                 />
-                <span
-                  className={`min-w-0 flex-1 truncate text-sm ${
-                    isTaskComplete(child) ? 'text-content-muted line-through' : 'text-content'
-                  }`}
-                >
-                  {child.title}
-                </span>
-              </div>
-            ))}
+              ))}
+            </SortableContext>
 
             {addingChild ? (
               <NewSubtaskRow
@@ -238,9 +254,11 @@ export function TaskRow({
 
   return (
     <div
-      className={`border-b border-border-subtle transition-colors duration-150 ${
+      ref={rowRef}
+      style={rowStyle}
+      className={`group/row border-b border-border-subtle bg-surface transition-colors duration-150 ${
         selected ? 'bg-surface-selected' : 'hover:bg-surface-hover'
-      } ${busy === true ? 'opacity-60' : ''}`}
+      } ${busy === true ? 'opacity-60' : ''} ${dragging ? 'z-10 opacity-50 shadow-lg' : ''}`}
     >
       <div
         className={`group grid items-center gap-x-2 px-2 ${rowPadding}`}
@@ -248,6 +266,11 @@ export function TaskRow({
         onClick={onSelect}
         role="row"
       >
+        {/* The grip. Hidden until the row is hovered or it takes focus. */}
+        <div className="flex justify-center" onClick={(event) => event.stopPropagation()}>
+          {dragHandle}
+        </div>
+
         {/* Expand — only on tasks that actually have subtasks. */}
         <div className="flex justify-center">
           {hasChildren ? (
@@ -394,18 +417,26 @@ export function TaskRow({
 
       {expanded ? (
         <div className="pb-1">
-          {children.map((child) => (
-            <SubtaskRow
-              key={child.id}
-              node={child}
-              gridTemplate={gridTemplate}
-              compact={compact}
-              showComments={showComments}
-              padding={subtaskPadding}
-              onPatch={(patch) => onPatch(child.id, patch)}
-              onRemove={() => onRemoveChild(child.id)}
-            />
-          ))}
+          <SortableContext
+            items={children.map((child) => child.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            {children.map((child) => (
+              <SubtaskRow
+                key={child.id}
+                node={child}
+                taskId={summary.id}
+                siblingIds={children.map((sibling) => sibling.id)}
+                etag={etag}
+                gridTemplate={gridTemplate}
+                compact={compact}
+                showComments={showComments}
+                padding={subtaskPadding}
+                onPatch={(patch) => onPatch(child.id, patch)}
+                onRemove={() => onRemoveChild(child.id)}
+              />
+            ))}
+          </SortableContext>
 
           {addingChild ? (
             <NewSubtaskRow
@@ -458,8 +489,75 @@ function CollapsedPercent({ percent, complete }: { percent: number; complete: bo
   );
 }
 
+/**
+ * A subtask on a phone: checkbox, title, grip. No columns, because there is no
+ * room for them — the same reasoning that turns the whole row into a card.
+ */
+function CompactSubtaskRow({
+  node,
+  taskId,
+  siblingIds,
+  etag,
+  onPatch,
+}: {
+  node: TaskNode;
+  taskId: string;
+  siblingIds: string[];
+  etag: string;
+  onPatch: (patch: PatchNode) => void;
+}) {
+  const { t } = useTranslation();
+  const sortable = useSortable({
+    id: node.id,
+    data: { type: 'child', taskId, siblingIds, etag } satisfies DragItemData,
+  });
+
+  return (
+    <div
+      ref={sortable.setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(sortable.transform),
+        transition: sortable.transition,
+      }}
+      className={`flex items-center gap-1 border-l border-border-subtle bg-surface pl-2 ${
+        sortable.isDragging ? 'z-10 opacity-50 shadow-lg' : ''
+      }`}
+    >
+      <button
+        type="button"
+        ref={sortable.setActivatorNodeRef}
+        {...sortable.attributes}
+        {...sortable.listeners}
+        aria-label={t('dnd.handle', { name: node.title })}
+        className="flex h-11 w-5 shrink-0 cursor-grab touch-none items-center justify-center rounded text-content-muted opacity-60"
+      >
+        <GripIcon className="h-4 w-4" />
+      </button>
+
+      <Checkbox
+        checked={isTaskComplete(node)}
+        label={t('columns.complete')}
+        touchTarget
+        onChange={(next) => onPatch({ isComplete: next })}
+      />
+
+      <span
+        className={`min-w-0 flex-1 truncate text-sm ${
+          isTaskComplete(node) ? 'text-content-muted line-through' : 'text-content'
+        }`}
+      >
+        {node.title}
+      </span>
+    </div>
+  );
+}
+
 interface SubtaskRowProps {
   node: TaskNode;
+  /** Its parent task, and the siblings it is ordered among — both for drags. */
+  taskId: string;
+  siblingIds: string[];
+  etag: string;
   gridTemplate: string;
   compact: boolean;
   showComments: boolean;
@@ -478,6 +576,9 @@ interface SubtaskRowProps {
  */
 function SubtaskRow({
   node,
+  taskId,
+  siblingIds,
+  etag,
   gridTemplate,
   compact,
   showComments,
@@ -488,12 +589,40 @@ function SubtaskRow({
   const { t } = useTranslation();
   const complete = isTaskComplete(node);
 
+  // Subtasks are ordered inside their parent's document, so a drag here is one
+  // write to one blob — unlike a main-task move (ADR-0034).
+  const sortable = useSortable({
+    id: node.id,
+    data: { type: 'child', taskId, siblingIds, etag } satisfies DragItemData,
+  });
+
   return (
     <div
-      className={`group grid items-center gap-x-2 px-2 ${padding} hover:bg-surface-hover`}
-      style={{ gridTemplateColumns: gridTemplate }}
+      ref={sortable.setNodeRef}
+      style={{
+        gridTemplateColumns: gridTemplate,
+        transform: CSS.Transform.toString(sortable.transform),
+        transition: sortable.transition,
+      }}
+      className={`group/row grid items-center gap-x-2 bg-surface px-2 ${padding} hover:bg-surface-hover ${
+        sortable.isDragging ? 'z-10 opacity-50 shadow-lg' : ''
+      }`}
       role="row"
     >
+      <div className="flex justify-center">
+        <button
+          type="button"
+          ref={sortable.setActivatorNodeRef}
+          {...sortable.attributes}
+          {...sortable.listeners}
+          aria-label={t('dnd.handle', { name: node.title })}
+          title={t('dnd.handleShort')}
+          className="flex h-6 w-5 cursor-grab touch-none items-center justify-center rounded text-content-muted opacity-0 transition-opacity duration-150 hover:bg-surface-hover hover:text-content focus-visible:opacity-100 group-hover/row:opacity-100"
+        >
+          <GripIcon className="h-4 w-4" />
+        </button>
+      </div>
+
       <div />
 
       <div className="flex justify-center">

@@ -3,6 +3,7 @@ import { RestError } from '@azure/storage-blob';
 import {
   DomainError,
   TASK_TAG_KEYS,
+  compareByOrderThenId,
   fromBlobMetadata,
   migrate,
   toBlobMetadata,
@@ -88,7 +89,9 @@ export class BlobTaskRepository implements ITaskRepository {
       summaries.push(resolved);
     }
 
-    return summaries.sort((a, b) => a.id.localeCompare(b.id));
+    // Manual order first, id second. The id tie-break is what keeps tasks
+    // written before ordering existed in the creation order they always had.
+    return summaries.sort(compareByOrderThenId);
   }
 
   async get(id: string): Promise<ETagged<TaskDocument> | null> {

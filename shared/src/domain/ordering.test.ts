@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   MIN_ORDER_GAP,
   ORDER_STEP,
+  compareByOrderThenId,
+  indexAfter,
   needsRenormalisation,
   nextOrder,
   orderBetween,
@@ -143,5 +145,60 @@ describe('renormalisation', () => {
     const renumbered = renormalise(items(5, 1.5, 900));
     expect(renumbered.map((item) => item.id)).toEqual(['item-1', 'item-0', 'item-2']);
     expect(renumbered.map((item) => item.order)).toEqual([1000, 2000, 3000]);
+  });
+});
+
+describe('compareByOrderThenId', () => {
+  const task = (id: string, order: number) => ({ id, order });
+
+  it('sorts by order', () => {
+    const sorted = [task('b', 2000), task('a', 1000)].sort(compareByOrderThenId);
+    expect(sorted.map((item) => item.id)).toEqual(['a', 'b']);
+  });
+
+  it('breaks a tie by id, so a list of never-reordered tasks keeps creation order', () => {
+    // Every task written before manual ordering existed carries ORDER_STEP.
+    // ULIDs sort by creation time, so the tie-break is the order they were
+    // raised in — which is what the list showed before ordering existed.
+    const sorted = [
+      task('01JB000000000000000000000Z', ORDER_STEP),
+      task('01JA000000000000000000000Z', ORDER_STEP),
+    ].sort(compareByOrderThenId);
+    expect(sorted[0]?.id.startsWith('01JA')).toBe(true);
+  });
+});
+
+describe('indexAfter', () => {
+  const list = [
+    { id: 'a', order: 1000 },
+    { id: 'b', order: 2000 },
+    { id: 'c', order: 3000 },
+  ];
+
+  it('null anchors to the head', () => {
+    expect(indexAfter(list, 'c', null)).toBe(0);
+  });
+
+  it('places an item straight after its anchor', () => {
+    // 'a' removed leaves [b, c]; after 'b' is index 1.
+    expect(indexAfter(list, 'a', 'b')).toBe(1);
+    expect(indexAfter(list, 'a', 'c')).toBe(2);
+  });
+
+  it('produces an index that round-trips through reorderSiblings', () => {
+    const index = indexAfter(list, 'a', 'b');
+    const { items } = reorderSiblings(list, 'a', index);
+    expect(items.map((item) => item.id)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('appends when the anchor has gone', () => {
+    // A stale client dropped onto a task someone else has since deleted.
+    // Appending moves nothing else, which beats guessing.
+    expect(indexAfter(list, 'a', 'deleted')).toBe(2);
+  });
+
+  it('is unaffected by the input being unsorted', () => {
+    const shuffled = [list[2], list[0], list[1]] as typeof list;
+    expect(indexAfter(shuffled, 'a', 'b')).toBe(1);
   });
 });

@@ -27,6 +27,13 @@ export type DomainEvent =
   | ({ readonly type: 'SubtaskCompleted'; readonly childId: string } & DomainEventBase)
   | ({ readonly type: 'SubtaskReopened'; readonly childId: string } & DomainEventBase)
   | ({ readonly type: 'ChildrenReordered'; readonly parentId: string } & DomainEventBase)
+  /**
+   * A main task was moved in the manual order. `renumbered` counts the other
+   * tasks rewritten to make room — normally 0, and non-zero only when the gap
+   * between two neighbours ran out of float precision (ADR-0034). An audit log
+   * wants to tell those two cases apart.
+   */
+  | ({ readonly type: 'TasksReordered'; readonly renumbered: number } & DomainEventBase)
   | ({ readonly type: 'AttachmentAdded'; readonly attachmentId: string } & DomainEventBase)
   | ({ readonly type: 'AttachmentRemoved'; readonly attachmentId: string } & DomainEventBase)
   | {

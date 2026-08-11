@@ -324,6 +324,68 @@ describe('the service layer against real storage', () => {
   });
 });
 
+describe('manual order survives real blob storage', () => {
+  /**
+   * The unit suite proves the ordering maths. This proves the part that only
+   * Azure can answer: that a fractional order survives the metadata round-trip
+   * and comes back off a *listing* — which is where the list view reads it
+   * from, without opening a single blob.
+   */
+  it('reorders through the listing, not through the documents', async () => {
+    const service = new TaskService(repository);
+
+    const a = await service.create({ title: 'Ordning A' }, ctx());
+    const b = await service.create({ title: 'Ordning B' }, ctx());
+    const c = await service.create({ title: 'Ordning C' }, ctx());
+
+    /** Positions within the shared container, which holds other tests' tasks. */
+    const positions = async () => {
+      const listed = await service.list({});
+      const index = (id: string) => listed.findIndex((summary) => summary.id === id);
+      return [index(a.document.id), index(b.document.id), index(c.document.id)];
+    };
+
+    const [beforeA, beforeB, beforeC] = await positions();
+    expect(beforeA).toBeLessThan(beforeB as number);
+    expect(beforeB).toBeLessThan(beforeC as number);
+
+    const { renumbered } = await service.reorderTasks(
+      { movedId: a.document.id, afterId: c.document.id },
+      a.etag,
+      ctx(),
+    );
+    expect(renumbered).toBe(0);
+
+    const [afterA, afterB, afterC] = await positions();
+    expect(afterB).toBeLessThan(afterC as number);
+    expect(afterC).toBeLessThan(afterA as number);
+
+    // The listing's order comes from metadata; the document is the truth behind
+    // it. If these disagree the cache has drifted.
+    const listed = (await service.list({})).find((summary) => summary.id === a.document.id);
+    const document = await service.get(a.document.id);
+    expect(listed?.order).toBe(document.document.root.order);
+  });
+
+  it('refuses a move on a stale ETag, against real storage', async () => {
+    const service = new TaskService(repository);
+
+    const first = await service.create({ title: 'Stale A' }, ctx());
+    const second = await service.create({ title: 'Stale B' }, ctx());
+    const stale = first.etag;
+
+    await service.patch(first.document.id, { node: { title: 'Stale A²' } }, first.etag, ctx());
+
+    await expect(
+      service.reorderTasks(
+        { movedId: first.document.id, afterId: second.document.id },
+        stale,
+        ctx(),
+      ),
+    ).rejects.toMatchObject({ code: 'concurrency_conflict' });
+  });
+});
+
 describe('the lists aggregate', () => {
   it('creates on first save and enforces the ETag afterwards', async () => {
     const listRepository = new BlobTaskListRepository(container);

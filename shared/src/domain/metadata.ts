@@ -1,6 +1,7 @@
 import { countChildren, getPercent, isTaskComplete } from './completion.js';
 import { COMMENTS_PREVIEW_LENGTH } from './constants.js';
 import { isValidIsoDate } from './dates.js';
+import { ORDER_STEP } from './ordering.js';
 import { totalAttachmentCount } from './tree.js';
 import type { TaskDocument, TaskSummary } from './schemas.js';
 
@@ -39,6 +40,7 @@ export const TASK_METADATA_KEYS = {
   attachmentCount: 'attachmentcount',
   updatedAt: 'updatedat',
   listId: 'listid',
+  order: 'taskorder',
   schemaVersion: 'schemaversion',
 } as const;
 
@@ -93,6 +95,8 @@ export function toBlobMetadata(document: TaskDocument): Record<string, string> {
     [TASK_METADATA_KEYS.childDoneCount]: String(done),
     [TASK_METADATA_KEYS.attachmentCount]: String(totalAttachmentCount(root)),
     [TASK_METADATA_KEYS.updatedAt]: root.updatedAt,
+    // Sparse float, so this can be fractional — never parsed with parseInt.
+    [TASK_METADATA_KEYS.order]: String(root.order),
     [TASK_METADATA_KEYS.schemaVersion]: String(document.schemaVersion),
   };
 
@@ -130,6 +134,14 @@ function readInt(source: Record<string, string>, key: string, fallback: number):
   const raw = source[key];
   if (raw === undefined) return fallback;
   const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+/** For `order`, which is a sparse float and would be truncated by readInt. */
+function readFloat(source: Record<string, string>, key: string, fallback: number): number {
+  const raw = source[key];
+  if (raw === undefined) return fallback;
+  const parsed = Number.parseFloat(raw);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
@@ -181,6 +193,10 @@ export function fromBlobMetadata(
     childDoneCount: readInt(metadata, TASK_METADATA_KEYS.childDoneCount, 0),
     attachmentCount: readInt(metadata, TASK_METADATA_KEYS.attachmentCount, 0),
     updatedAt,
+    // A task written before manual ordering existed has no order metadata. It
+    // falls back to the value every task used to be created with, so legacy
+    // tasks tie and sort by id — the creation order the list showed before.
+    order: readFloat(metadata, TASK_METADATA_KEYS.order, ORDER_STEP),
     ...(etag !== undefined ? { etag } : {}),
   };
 }

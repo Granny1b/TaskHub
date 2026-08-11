@@ -139,6 +139,20 @@ export function CheckIcon({ className = base }: IconProps) {
   );
 }
 
+/** Six dots: the near-universal "grab me" affordance for a reorderable row. */
+export function GripIcon({ className = base }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+      <circle cx="7.5" cy="5" r="1.35" />
+      <circle cx="12.5" cy="5" r="1.35" />
+      <circle cx="7.5" cy="10" r="1.35" />
+      <circle cx="12.5" cy="10" r="1.35" />
+      <circle cx="7.5" cy="15" r="1.35" />
+      <circle cx="12.5" cy="15" r="1.35" />
+    </svg>
+  );
+}
+
 export function PersonIcon({ className = base }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" aria-hidden>

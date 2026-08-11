@@ -85,6 +85,15 @@
     "light": "Ljust",
     "dark": "Mörkt"
   },
+  "dnd": {
+    "handle": "Flytta {{name}}",
+    "handleShort": "Dra för att flytta",
+    "instructions": "Tryck på mellanslag för att lyfta raden. Flytta den med piltangenterna. Tryck på mellanslag igen för att släppa, eller Escape för att avbryta.",
+    "picked": "{{name}} lyftes.",
+    "over": "Flyttas till {{name}}.",
+    "dropped": "{{name}} släpptes på sin nya plats.",
+    "cancelled": "Flytten av {{name}} avbröts."
+  },
   "settings": {
     "title": "Inställningar",
     "open": "Öppna inställningar",

@@ -366,6 +366,154 @@ describe('TaskService', () => {
     });
   });
 
+  describe('manual order of main tasks', () => {
+    /** Three tasks, oldest first, each with a distinct order. */
+    const seedThree = async () => {
+      const a = await service.create({ title: 'A' }, ctx());
+      const b = await service.create({ title: 'B' }, ctx());
+      const c = await service.create({ title: 'C' }, ctx());
+      return { a, b, c };
+    };
+
+    const titles = async () => (await service.list({})).map((summary) => summary.title);
+
+    it('gives each new task an order of its own, at the end', async () => {
+      const { a, b, c } = await seedThree();
+      const orders = [a, b, c].map((entry) => entry.document.root.order);
+
+      expect(orders).toEqual([1000, 2000, 3000]);
+      expect(await titles()).toEqual(['A', 'B', 'C']);
+    });
+
+    it('moves a task after another and persists it', async () => {
+      const { a, c } = await seedThree();
+
+      const { renumbered } = await service.reorderTasks(
+        { movedId: a.document.id, afterId: c.document.id },
+        a.etag,
+        ctx(),
+      );
+
+      expect(await titles()).toEqual(['B', 'C', 'A']);
+      // One blob written, which is the point of sparse floats.
+      expect(renumbered).toBe(0);
+    });
+
+    it('moves a task to the head with a null anchor', async () => {
+      const { c } = await seedThree();
+      await service.reorderTasks({ movedId: c.document.id, afterId: null }, c.etag, ctx());
+
+      expect(await titles()).toEqual(['C', 'A', 'B']);
+    });
+
+    it('emits TasksReordered', async () => {
+      const { a, b } = await seedThree();
+      events.length = 0;
+      await service.reorderTasks({ movedId: a.document.id, afterId: b.document.id }, a.etag, ctx());
+
+      expect(events).toEqual([
+        expect.objectContaining({ type: 'TasksReordered', taskId: a.document.id, renumbered: 0 }),
+      ]);
+    });
+
+    it('refuses a stale ETag rather than losing the other edit', async () => {
+      const { a, b } = await seedThree();
+      const stale = a.etag;
+      await service.patch(a.document.id, { node: { title: 'A edited' } }, a.etag, ctx());
+
+      await expect(
+        service.reorderTasks({ movedId: a.document.id, afterId: b.document.id }, stale, ctx()),
+      ).rejects.toMatchObject({ code: 'concurrency_conflict' });
+
+      // Nothing moved, and the other person's edit is intact.
+      expect(await titles()).toEqual(['A edited', 'B', 'C']);
+    });
+
+    it('rejects placing a task after itself', async () => {
+      const { a } = await seedThree();
+      await expect(
+        service.reorderTasks({ movedId: a.document.id, afterId: a.document.id }, a.etag, ctx()),
+      ).rejects.toMatchObject({ code: 'invalid_operation' });
+    });
+
+    it('rejects a task that does not exist', async () => {
+      const { a } = await seedThree();
+      await expect(
+        service.reorderTasks(
+          { movedId: '01JZZZZZZZZZZZZZZZZZZZZZZZ', afterId: a.document.id },
+          a.etag,
+          ctx(),
+        ),
+      ).rejects.toMatchObject({ code: 'not_found' });
+    });
+
+    it('renumbers the whole list when the float gap is exhausted', async () => {
+      const { a, b, c } = await seedThree();
+
+      // Force the neighbours together so no value fits between them. This is
+      // the tail case sparse-float ordering has to survive — reached in
+      // practice only after ~20 drops into the same gap.
+      const squeeze = async (entry: typeof a, order: number) => {
+        const current = await service.get(entry.document.id);
+        await repository.replace(
+          { ...current.document, root: { ...current.document.root, order } },
+          current.etag,
+        );
+      };
+      await squeeze(a, 1000);
+      await squeeze(b, 1000.0001);
+      await squeeze(c, 1000.0002);
+
+      const latest = await service.get(c.document.id);
+      const { renumbered } = await service.reorderTasks(
+        { movedId: c.document.id, afterId: a.document.id },
+        latest.etag,
+        ctx(),
+      );
+
+      expect(await titles()).toEqual(['A', 'C', 'B']);
+
+      // One, not two: A was squeezed to 1000 and renumbers back to 1000, and a
+      // blob whose order is already right is not rewritten. C is the moved task
+      // and is written separately, under the caller's own ETag.
+      expect(renumbered).toBe(1);
+
+      const orders = (await service.list({})).map((summary) => summary.order);
+      expect(orders).toEqual([1000, 2000, 3000]);
+    });
+
+    it('leaves a renumbered task alone rather than stamping it as edited', async () => {
+      // A renumber changes how order is represented, not the task. Stamping
+      // every task would show the whole list as edited by whoever dragged one
+      // row, which is a lie an audit log would repeat.
+      const { a, b, c } = await seedThree();
+      const before = (await service.get(b.document.id)).document.root.updatedAt;
+
+      for (const [entry, order] of [
+        [a, 1000],
+        [b, 1000.0001],
+        [c, 1000.0002],
+      ] as const) {
+        const current = await service.get(entry.document.id);
+        await repository.replace(
+          { ...current.document, root: { ...current.document.root, order } },
+          current.etag,
+        );
+      }
+
+      const latest = await service.get(c.document.id);
+      await service.reorderTasks(
+        { movedId: c.document.id, afterId: a.document.id },
+        latest.etag,
+        createContext('someone-else', new Date('2026-09-01T12:00:00Z')),
+      );
+
+      const after = await service.get(b.document.id);
+      expect(after.document.root.updatedAt).toBe(before);
+      expect(after.document.root.updatedBy).not.toBe('someone-else');
+    });
+  });
+
   describe('soft delete', () => {
     it('marks rather than destroys, and emits TaskDeleted', async () => {
       const created = await seed();

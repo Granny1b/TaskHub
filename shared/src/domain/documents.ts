@@ -11,7 +11,19 @@ import { CURRENT_SCHEMA_VERSION, type TaskDocument, type TaskSummary } from './s
  */
 
 export function createTaskDocument(
-  input: { title: string; date?: string; comments?: string; listId?: string | null },
+  input: {
+    title: string;
+    date?: string;
+    comments?: string;
+    listId?: string | null;
+    /**
+     * Sort position among the other main tasks. The caller passes
+     * `nextOrder(existing)` so a new task lands at the end with a value of its
+     * own; without it every task would share `ORDER_STEP` and the first drag
+     * would have to renumber the lot (ADR-0034).
+     */
+    order?: number;
+  },
   ctx: MutationContext,
 ): TaskDocument {
   const root = createTaskNode(
@@ -19,7 +31,7 @@ export function createTaskDocument(
       title: input.title,
       ...(input.date !== undefined ? { date: input.date } : {}),
       ...(input.comments !== undefined ? { comments: input.comments } : {}),
-      order: ORDER_STEP,
+      order: input.order ?? ORDER_STEP,
     },
     0,
     ctx,
@@ -58,6 +70,7 @@ export function toTaskSummary(document: TaskDocument, etag?: string): TaskSummar
     childDoneCount: done,
     attachmentCount: totalAttachmentCount(root),
     updatedAt: root.updatedAt,
+    order: root.order,
     ...(etag !== undefined ? { etag } : {}),
   };
 }

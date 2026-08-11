@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from 'react';
  */
 
 export type ColumnId =
+  | 'drag'
   | 'expand'
   | 'complete'
   | 'date'
@@ -34,6 +35,12 @@ export interface ColumnDefinition {
 }
 
 export const COLUMNS: readonly ColumnDefinition[] = [
+  /**
+   * The drag handle. Narrow, and empty until the row is hovered or the handle
+   * takes focus — the grip is an affordance for a deliberate act, not something
+   * that should be competing with the data on every row of a dense list.
+   */
+  { id: 'drag', labelKey: null, defaultWidth: 20, minWidth: 20, resizable: false },
   { id: 'expand', labelKey: null, defaultWidth: 28, minWidth: 28, resizable: false },
   {
     id: 'complete',

@@ -337,6 +337,14 @@ async function handleApi(request, response, url) {
       return sendJson(response, 201, result.document, result.etag);
     }
 
+    // Before `tasks/{id}`: this is a literal segment, not a task id.
+    if (segments.length === 2 && segments[1] === 'reorder' && method === 'POST') {
+      const body = await readBody(request);
+      const result = await tasks.reorderTasks(body, requireIfMatch(request), context());
+      response.setHeader('X-TaskHub-Renumbered', String(result.renumbered));
+      return sendJson(response, 200, result.saved.document, result.saved.etag);
+    }
+
     const id = segments[1];
 
     if (segments.length === 2 && method === 'GET') {

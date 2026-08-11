@@ -72,6 +72,18 @@ the wrong day.
 | `attachments.ts` | Path convention, filename sanitisation, upload gates.                           |
 | `events.ts`      | Typed domain events on an in-process bus.                                       |
 
+### Manual order, in one paragraph
+
+Everything orderable carries a sparse float, so moving one item writes one
+number instead of renumbering its neighbours. Subtasks and lists live inside a
+single document, so a move there is one conditional write and cannot half-apply.
+Main tasks are separate blobs: `root.order` is the truth, `taskorder` in the blob
+metadata is what the listing sorts by, and the total order is
+`compareByOrderThenId` — the id tie-break is what keeps tasks written before
+ordering existed in the order they always had. The one case that spans blobs is
+a renumber, when the float gap between two neighbours is exhausted; it is best
+effort and reports how many tasks it rewrote. ADR-0034 has the reasoning.
+
 ### The completion model, in one paragraph
 
 The checkbox is the sole authority on "done"; `isTaskComplete()` is the only
@@ -112,7 +124,7 @@ Container: tasks (private)
   Blob metadata (list-view cache, ASCII, base64 for text):
     titleb64, taskdate, iscomplete, percent, completeddate,
     childcount, childdonecount, attachmentcount, updatedat,
-    listid, schemaversion
+    listid, taskorder, schemaversion
 
   Blob index tags (server-side filtering, 4 of 10 used):
     isComplete, date, listId, deleted

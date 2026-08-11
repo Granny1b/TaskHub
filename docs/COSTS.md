@@ -111,16 +111,24 @@ total                                      2.040 GB
 task writes (PutBlob)          50/day x 30 days  =  1,500 ops
 attachment uploads + thumbs    ~5 ops x 30       =    150 ops
 list-view loads (ListBlobs)    5 x 15 x 30       =  2,250 ops
+create-time ListBlobs          10/day x 30       =    300 ops
                                                     ---------
-total                                              3,900 ops
+total                                              4,200 ops
 
-3,900 / 10,000 x €0.05                             = €0.0195
+4,200 / 10,000 x €0.05                             = €0.021
 ```
 
 Note the shape here: **the list view, not the writing of tasks, is the largest transaction
 consumer** — and `ListBlobs` is billed at the expensive write rate. One `ListBlobs` call returns
 up to 5,000 blobs, so 500 tasks is a single billable operation per load; that is exactly the
 efficiency the "no index blob" decision (spec §3) was bought for.
+
+The `create-time ListBlobs` line is the one addition manual ordering made: a new task reads the
+existing summaries to work out where the end of the list is (ADR-0034). At ten new tasks a day
+that is 300 operations a month, about €0.0015 — a rounding error against a bill dominated by
+storage at rest. Dragging a task is one `PutBlob` and is already inside the task-writes line; the
+renumbering case writes one blob per task, and needs roughly twenty drops into the same gap before
+it happens at all.
 
 **Storage — read transactions** (~€0.004 / 10,000)
 
@@ -166,12 +174,12 @@ total egress                             ≈ 1.50 GB
 | ----------------------------------- | ---------------: |
 | Static Web Apps (Free)              |           0.0000 |
 | Storage — data at rest              |           0.0367 |
-| Storage — write + list transactions |           0.0195 |
+| Storage — write + list transactions |           0.0210 |
 | Storage — read transactions         |           0.0046 |
 | Storage — other transactions        |           0.0020 |
 | Storage — blob index tags           |           0.0030 |
 | Bandwidth / egress                  |           0.0000 |
-| **Total**                           |     **≈ €0.066** |
+| **Total**                           |     **≈ €0.067** |
 
 **Call it under €0.15/month including headroom for the price uncertainty in §0.** The spec's
 target of under €2/month is met with roughly an order of magnitude to spare.

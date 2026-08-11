@@ -233,6 +233,14 @@ export const taskSummarySchema = z.object({
   childDoneCount: z.number().int().nonnegative(),
   attachmentCount: z.number().int().nonnegative(),
   updatedAt: isoDateTimeSchema,
+  /**
+   * The manual sort position, mirrored from `root.order`.
+   *
+   * Main tasks live in separate blobs, so unlike subtasks their order cannot be
+   * read from a parent. It rides in the blob metadata cache instead, which is
+   * what lets the list view sort without opening anything (ADR-0034).
+   */
+  order: z.number().finite(),
   etag: z.string().optional(),
 });
 
