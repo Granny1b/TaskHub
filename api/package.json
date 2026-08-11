@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "SWA-managed Azure Functions for TaskHub",
-  "main": "dist/functions/*.js",
+  "main": "dist/index.js",
   "scripts": {
     "build": "tsc --build",
     "clean": "node ../scripts/clean.mjs",

@@ -27,7 +27,8 @@
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --build --force",
     "verify": "node scripts/verify.mjs",
-    "test:integration": "vitest run --config vitest.integration.config.ts"
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "stage:api": "node scripts/stageApi.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

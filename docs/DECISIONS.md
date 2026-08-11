@@ -402,3 +402,79 @@ refetch, discover the 404, tell the user the task is gone. Probing before every
 write would add a round trip to the common path to improve a rare one, and would
 race anyway. Only reachable via an admin purge or the Phase-2 cleanup job, since
 no v1 user action hard-deletes.
+
+---
+
+## ADR-0020 — Storage in Sweden Central, Static Web App in West Europe
+
+**Date:** 2026-08-11 · **Status:** accepted · **Deviates from spec §1**
+
+**Context.** The spec asks for Sweden Central with West Europe as a fallback.
+Static Web Apps is a global service; the resource's region decides only where
+the managed Functions execute, not where static assets are served from. Sources
+disagreed on whether Sweden Central is a supported Static Web Apps region, and
+it could not be confirmed given the documentation egress block.
+
+**Decision.** Storage — all task documents and attachments — is in Sweden
+Central. The Static Web App defaults to West Europe, the spec's own stated
+fallback, and is a parameter.
+
+**Consequences.**
+
+- Data residency holds: both are EU regions, and the data itself never leaves
+  Sweden Central.
+- Requests hop Netherlands → Sweden for storage. At this volume the added
+  latency is immaterial next to the round trip to the browser.
+- Cheap to revisit: change `staticWebAppLocation` and redeploy. An unsupported
+  region is rejected at deployment time before anything is created, so trying
+  Sweden Central costs nothing but a minute.
+
+---
+
+## ADR-0021 — The Archive tier is disabled by default
+
+**Date:** 2026-08-11 · **Status:** accepted · **Deviates from spec §13**
+
+**Context.** The spec's lifecycle policy moves attachments to Cool after 60 days
+and Archive after 365. But an archived blob cannot be served by a read SAS: the
+request fails with `BlobArchived`, and rehydration takes hours. The attachment
+pipeline (§11) reads exclusively through short-lived read SAS URLs.
+
+**Decision.** Ship the Cool transition. Put the Archive transition behind
+`enableArchiveTier`, defaulting to false.
+
+**Consequences.**
+
+- Attachments stay viewable at any age. Enabling archiving today would silently
+  break viewing anything older than a year — and it would break it a year after
+  deployment, long after anyone would connect the two.
+- The saving forgone is a fraction of a euro per month at the projected volume,
+  which is not worth a broken feature.
+- To enable it later the UI needs an "archived — request restore" state and the
+  API needs a rehydration endpoint. Recorded as an open item in
+  `docs/VERIFICATION.md`.
+
+---
+
+## ADR-0022 — The deployment artefact is built in CI, not by the SWA build service
+
+**Date:** 2026-08-11 · **Status:** accepted
+
+**Context.** The API depends on `@taskhub/shared`, a workspace package that does
+not exist on npm. The Static Web Apps build service (Oryx) would have to resolve
+that itself, and its Node toolchain is not the one the tests ran under.
+
+**Decision.** The workflow builds and tests everything, then `scripts/stageApi.mjs`
+assembles a self-contained folder — compiled handlers, `host.json`, a
+package.json with the workspace reference stripped, and `@taskhub/shared`
+materialised into `node_modules` — and deploys with `skip_app_build` and
+`skip_api_build`.
+
+**Consequences.**
+
+- What deploys is exactly what was built and tested, on one toolchain.
+- The staging script is a moving part that must keep up with the workspace
+  layout. It is smoke-tested by loading the staged entry point and confirming
+  every handler registers, which fails loudly if a dependency stops resolving.
+- `npm run verify` runs again inside the deploy workflow rather than trusting a
+  CI run on a possibly older commit.

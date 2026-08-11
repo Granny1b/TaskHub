@@ -17,15 +17,15 @@ UI.
 
 ## Status
 
-| Phase                 | State       |
-| --------------------- | ----------- |
-| 0 — Foundations       | Complete    |
-| 1 — Domain + storage  | Complete    |
-| 2 — API + concurrency | Complete    |
-| 3 — Infrastructure    | Not started |
-| 4 — Core UI           | Not started |
-| 5 — Attachments       | Not started |
-| 6 — Polish            | Not started |
+| Phase                 | State                       |
+| --------------------- | --------------------------- |
+| 0 — Foundations       | Complete                    |
+| 1 — Domain + storage  | Complete                    |
+| 2 — API + concurrency | Complete                    |
+| 3 — Infrastructure    | Code complete, not deployed |
+| 4 — Core UI           | Not started                 |
+| 5 — Attachments       | Not started                 |
+| 6 — Polish            | Not started                 |
 
 The frontend is currently a scaffold that proves the token layer, i18n and the
 shared-package import work. The real UI is Phase 4.
@@ -66,6 +66,7 @@ tests. It is the single command that says whether the repository is healthy.
 | `npm run typecheck`         | `tsc --build` across all three packages            |
 | `npm run format`            | Prettier write                                     |
 | `npm run clean`             | Remove build output (cross-platform)               |
+| `npm run stage:api`         | Assemble the self-contained API deployment folder  |
 
 ### Local API against the blob emulator
 
@@ -86,6 +87,7 @@ what it is for.
 /api        Azure Functions — functions/ (thin handlers), domain/, repositories/, lib/
 /shared     Zod schemas, domain rules, config. Imported by both. Platform-neutral.
 /docs       Architecture, decisions, verification, costs, tokens
+/infra      Bicep templates, deploy script (see infra/README.md)
 /scripts    Cross-platform build helpers
 ```
 

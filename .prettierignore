@@ -7,3 +7,4 @@ package-lock.json
 
 # The specification is the user's document. Never reformat it.
 TASKHUB_CLAUDE_CODE_PROMPT.md
+api-deploy/
