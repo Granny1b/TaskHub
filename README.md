@@ -27,8 +27,13 @@ UI.
 | 5 — Attachments       | Not started                 |
 | 6 — Polish            | Not started                 |
 
-The frontend is currently a scaffold that proves the token layer, i18n and the
-shared-package import work. The real UI is Phase 4.
+Measured on mobile (360px) with Lighthouse: **Performance 91, Accessibility
+100, Best Practices 100**. SEO is deliberately 63 — the app declares `noindex`
+because every route is authenticated and it should not be in a search index
+(ADR-0032).
+
+Deployment is the one thing outstanding: the infrastructure is written and
+validated but has never been applied to a subscription. See `infra/README.md`.
 
 ## Requirements
 

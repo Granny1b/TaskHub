@@ -77,5 +77,14 @@
     "loading": "Laddar…",
     "error": "Något gick fel",
     "retry": "Försök igen"
+  },
+  "theme": {
+    "label": "Utseende",
+    "system": "System",
+    "light": "Ljust",
+    "dark": "Mörkt"
+  },
+  "a11y": {
+    "skipToContent": "Hoppa till uppgiftslistan"
   }
 }

@@ -62,6 +62,13 @@
   --surface-selected: var(--accent-50);
   --border: var(--neutral-200);
   --border-strong: var(--neutral-300);
+  /*
+    The boundary of an interactive control — an unchecked checkbox, an input
+    outline. WCAG 1.4.11 requires 3:1 against its background, and the subtle
+    border used for row separators measures 1.48:1: the checkbox was there but
+    effectively invisible. Separators stay subtle; controls do not.
+  */
+  --border-control: var(--neutral-500);
   --text: var(--neutral-900);
   --text-muted: var(--neutral-500);
   --text-inverse: #ffffff;
@@ -111,6 +118,7 @@
   --surface-selected: var(--accent-900);
   --border: var(--neutral-800);
   --border-strong: var(--neutral-700);
+  --border-control: var(--neutral-500);
   --text: var(--neutral-100);
   --text-muted: var(--neutral-400);
   --text-inverse: var(--neutral-900);
@@ -118,6 +126,11 @@
   --accent-hover: var(--accent-300);
   --accent-contrast: var(--neutral-950);
   --focus-ring: var(--accent-400);
+
+  /* #dc2626 measures 3.70:1 on the dark surface — under the 4.5:1 needed for
+     text. Lighten it rather than leave destructive actions hard to read. */
+  --danger-500: #f87171;
+  --danger-600: #ef4444;
 
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
   --shadow-md: 0 2px 8px -1px rgb(0 0 0 / 0.5);
@@ -134,6 +147,7 @@
     --surface-selected: var(--accent-900);
     --border: var(--neutral-800);
     --border-strong: var(--neutral-700);
+    --border-control: var(--neutral-500);
     --text: var(--neutral-100);
     --text-muted: var(--neutral-400);
     --text-inverse: var(--neutral-900);
@@ -141,6 +155,9 @@
     --accent-hover: var(--accent-300);
     --accent-contrast: var(--neutral-950);
     --focus-ring: var(--accent-400);
+
+    --danger-500: #f87171;
+    --danger-600: #ef4444;
 
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
     --shadow-md: 0 2px 8px -1px rgb(0 0 0 / 0.5);

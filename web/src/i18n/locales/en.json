@@ -77,5 +77,14 @@
     "loading": "Loading…",
     "error": "Something went wrong",
     "retry": "Try again"
+  },
+  "theme": {
+    "label": "Appearance",
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "a11y": {
+    "skipToContent": "Skip to task list"
   }
 }

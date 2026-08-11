@@ -6,6 +6,7 @@ import { InboxIcon, ListIcon, PlusIcon, TrashIcon } from '../../components/icons
 import { Skeleton } from '../../components/Skeleton.js';
 import { useCreateList, useDeleteList, useLists, useRenameList } from '../../lib/queries.js';
 import { setLanguage } from '../../i18n/index.js';
+import { useTheme, type ThemePreference } from '../../lib/theme.js';
 
 export type ListSelection = { kind: 'all' } | { kind: 'ungrouped' } | { kind: 'list'; id: string };
 
@@ -158,38 +159,76 @@ export function LeftPanel({
         ) : null}
       </div>
 
-      {!collapsed ? <LanguageSwitcher /> : null}
+      {!collapsed ? <PanelFooter /> : null}
     </nav>
   );
 }
 
 /**
- * Swedish is the default and English is a deliberate choice, so the switcher
- * lives quietly at the bottom of the panel rather than in a prominent position.
+ * Language and theme, kept quietly at the bottom of the panel. Both are
+ * preferences someone sets once, not controls they reach for daily.
  */
+function PanelFooter() {
+  return (
+    <div className="shrink-0 space-y-1 border-t border-border-subtle p-2">
+      <LanguageSwitcher />
+      <ThemeSwitcher />
+    </div>
+  );
+}
+
+function ThemeSwitcher() {
+  const { t } = useTranslation();
+  const { preference, setPreference } = useTheme();
+
+  const options: { value: ThemePreference; label: string }[] = [
+    { value: 'system', label: t('theme.system') },
+    { value: 'light', label: t('theme.light') },
+    { value: 'dark', label: t('theme.dark') },
+  ];
+
+  return (
+    <div className="flex gap-1" role="group" aria-label={t('theme.label')}>
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          aria-pressed={preference === option.value}
+          onClick={() => setPreference(option.value)}
+          className={`flex-1 rounded px-1 py-1 text-[11px] transition-colors duration-150 ${
+            preference === option.value
+              ? 'bg-surface-selected font-medium text-content'
+              : 'text-content-muted hover:bg-surface-hover'
+          }`}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function LanguageSwitcher() {
   const { i18n } = useTranslation();
   const current = i18n.language.startsWith('en') ? 'en' : 'sv';
 
   return (
-    <div className="shrink-0 border-t border-border-subtle p-2">
-      <div className="flex gap-1" role="group" aria-label="Language">
-        {(['sv', 'en'] as const).map((language) => (
-          <button
-            key={language}
-            type="button"
-            aria-pressed={current === language}
-            onClick={() => setLanguage(language)}
-            className={`flex-1 rounded px-2 py-1 text-xs uppercase transition-colors duration-150 ${
-              current === language
-                ? 'bg-surface-selected font-medium text-content'
-                : 'text-content-muted hover:bg-surface-hover'
-            }`}
-          >
-            {language}
-          </button>
-        ))}
-      </div>
+    <div className="flex gap-1" role="group" aria-label="Language">
+      {(['sv', 'en'] as const).map((language) => (
+        <button
+          key={language}
+          type="button"
+          aria-pressed={current === language}
+          onClick={() => setLanguage(language)}
+          className={`flex-1 rounded px-2 py-1 text-xs uppercase transition-colors duration-150 ${
+            current === language
+              ? 'bg-surface-selected font-medium text-content'
+              : 'text-content-muted hover:bg-surface-hover'
+          }`}
+        >
+          {language}
+        </button>
+      ))}
     </div>
   );
 }

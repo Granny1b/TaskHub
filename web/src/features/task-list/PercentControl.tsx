@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { clampPercent, countChildren, type TaskNode } from '@taskhub/shared';
+import { useFocusTrap } from '../../lib/useFocusTrap.js';
 
 interface PercentControlProps {
   node: TaskNode;
@@ -189,24 +190,27 @@ export function PercentSheet({ node, onClose, onChangePercent }: PercentSheetPro
   const { t } = useTranslation();
   const initial = node.completion.kind === 'percent' ? node.completion.percent : 0;
   const [value, setValue] = useState(initial);
+  const sheetRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  useFocusTrap(sheetRef, true, onClose);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-50 flex flex-col justify-end"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('percent.label')}
+    >
       <button
         type="button"
         aria-label={t('common.close')}
         className="absolute inset-0 bg-black/40"
         onClick={onClose}
       />
-      <div className="relative rounded-t-xl border-t border-border-subtle bg-surface p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-lg">
+      <div
+        ref={sheetRef}
+        className="relative rounded-t-xl border-t border-border-subtle bg-surface p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-lg"
+      >
         <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-border-strong" aria-hidden />
 
         <div className="mb-4 flex items-baseline justify-between">

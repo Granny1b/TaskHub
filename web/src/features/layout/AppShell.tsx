@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { IconButton } from '../../components/Button.js';
@@ -6,8 +6,18 @@ import { MenuIcon, PlusIcon, SearchIcon } from '../../components/icons.js';
 import type { TaskFilter } from '../../lib/apiClient.js';
 import { useIsDesktop } from '../../lib/useMediaQuery.js';
 import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts.js';
+import { useFocusTrap } from '../../lib/useFocusTrap.js';
 import { useWindowDropGuard } from '../attachments/DropZone.js';
-import { TaskDetailPane } from '../task-detail/TaskDetailPane.js';
+/*
+  The detail pane — and with it the whole attachment pipeline — is never on
+  screen at first paint. Loading it lazily keeps the initial bundle to what the
+  task list actually needs.
+*/
+const TaskDetailPane = lazy(() =>
+  import('../task-detail/TaskDetailPane.js').then((module) => ({
+    default: module.TaskDetailPane,
+  })),
+);
 import { TaskListView } from '../task-list/TaskListView.js';
 import { LeftPanel, type ListSelection } from './LeftPanel.js';
 
@@ -35,6 +45,7 @@ export function AppShell() {
   const [newTaskNonce, setNewTaskNonce] = useState(0);
 
   const searchRef = useRef<HTMLInputElement>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
   const selectedTaskId = params.taskId ?? null;
 
   const openTask = useCallback(
@@ -51,6 +62,7 @@ export function AppShell() {
   // A file dropped outside a drop zone must do nothing, not navigate away and
   // discard what the user was doing.
   useWindowDropGuard();
+  useFocusTrap(drawerRef, drawerOpen, () => setDrawerOpen(false));
 
   useKeyboardShortcuts({
     onSearch: () => searchRef.current?.focus(),
@@ -81,13 +93,24 @@ export function AppShell() {
   if (!isDesktop && selectedTaskId !== null) {
     return (
       <div className="flex h-dvh flex-col bg-surface">
-        <TaskDetailPane taskId={selectedTaskId} onClose={closeTask} asRoute />
+        <Suspense fallback={<DetailFallback />}>
+          <TaskDetailPane taskId={selectedTaskId} onClose={closeTask} asRoute />
+        </Suspense>
       </div>
     );
   }
 
   return (
     <div className="flex h-dvh overflow-hidden bg-surface">
+      {/* Visible only on focus. Without it, reaching the task list by keyboard
+          means tabbing through every list in the panel first. */}
+      <a
+        href="#task-list"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-accent focus:px-3 focus:py-2 focus:text-sm focus:text-accent-contrast"
+      >
+        {t('a11y.skipToContent')}
+      </a>
+
       {/* Desktop panel */}
       <div className="hidden md:block">
         <LeftPanel
@@ -100,14 +123,14 @@ export function AppShell() {
 
       {/* Mobile drawer */}
       {drawerOpen ? (
-        <div className="fixed inset-0 z-40 md:hidden">
+        <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true">
           <button
             type="button"
             aria-label={t('common.close')}
             className="absolute inset-0 bg-black/40"
             onClick={() => setDrawerOpen(false)}
           />
-          <div className="relative h-full w-72 max-w-[85vw] shadow-lg">
+          <div ref={drawerRef} className="relative h-full w-72 max-w-[85vw] shadow-lg">
             <LeftPanel
               selection={selection}
               onSelect={setSelection}
@@ -153,7 +176,7 @@ export function AppShell() {
           </span>
         </header>
 
-        <main className="min-h-0 flex-1">
+        <main id="task-list" tabIndex={-1} className="min-h-0 flex-1">
           {/* Keyed by selection so switching lists resets row expansion, but
               NOT by the create signal — remounting on every "new task" would
               collapse everything the user had open. */}
@@ -184,9 +207,21 @@ export function AppShell() {
       {/* Desktop detail pane */}
       {isDesktop && selectedTaskId !== null ? (
         <div className="hidden w-[380px] shrink-0 md:block lg:w-[440px]">
-          <TaskDetailPane taskId={selectedTaskId} onClose={closeTask} />
+          <Suspense fallback={<DetailFallback />}>
+            <TaskDetailPane taskId={selectedTaskId} onClose={closeTask} />
+          </Suspense>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** Matches the pane's own loading state, so the swap is not a visible jump. */
+function DetailFallback() {
+  return (
+    <div className="h-full w-full border-l border-border-subtle bg-surface p-4">
+      <div className="h-6 w-2/3 animate-pulse rounded bg-surface-sunken" />
+      <div className="mt-3 h-4 w-1/3 animate-pulse rounded bg-surface-sunken" />
     </div>
   );
 }

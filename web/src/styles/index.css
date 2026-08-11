@@ -22,6 +22,7 @@
   --color-surface-selected: var(--surface-selected);
   --color-border-subtle: var(--border);
   --color-border-strong: var(--border-strong);
+  --color-border-control: var(--border-control);
   --color-content: var(--text);
   --color-content-muted: var(--text-muted);
   --color-content-inverse: var(--text-inverse);

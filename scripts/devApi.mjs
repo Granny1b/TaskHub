@@ -20,6 +20,7 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
 import { extname, join, normalize, resolve } from 'node:path';
 
 const { TaskService } = await import('../api/dist/domain/taskService.js');
@@ -426,7 +427,10 @@ async function handleApi(request, response, url) {
   return sendJson(response, 404, { type: 'not_found', title: 'No such route', status: 404 });
 }
 
-async function serveStatic(response, pathname) {
+/** Text assets worth compressing. Images and fonts are already compressed. */
+const COMPRESSIBLE = new Set(['.html', '.js', '.css', '.json', '.svg', '.txt']);
+
+async function serveStatic(response, pathname, acceptEncoding = '') {
   const relative = normalize(pathname).replace(/^(\.\.[/\\])+/, '');
   let filePath = join(STATIC_DIR, relative);
 
@@ -440,8 +444,26 @@ async function serveStatic(response, pathname) {
   }
 
   const body = await readFile(filePath);
+  const extension = extname(filePath);
+
+  /*
+    Compress text assets.
+
+    Static Web Apps serves gzip/brotli from its CDN, so an uncompressed local
+    server measures a page nobody is actually served — Lighthouse scores against
+    three times the real transfer size. Matching production here keeps the
+    measurement honest in the direction that matters.
+  */
+  if (COMPRESSIBLE.has(extension) && acceptEncoding.includes('gzip')) {
+    return send(response, 200, gzipSync(body), {
+      'Content-Type': MIME[extension] ?? 'application/octet-stream',
+      'Content-Encoding': 'gzip',
+      Vary: 'Accept-Encoding',
+    });
+  }
+
   send(response, 200, body, {
-    'Content-Type': MIME[extname(filePath)] ?? 'application/octet-stream',
+    'Content-Type': MIME[extension] ?? 'application/octet-stream',
   });
 }
 
@@ -450,7 +472,7 @@ const server = createServer((request, response) => {
 
   const run = url.pathname.startsWith('/api')
     ? handleApi(request, response, url)
-    : serveStatic(response, url.pathname);
+    : serveStatic(response, url.pathname, request.headers['accept-encoding'] ?? '');
 
   Promise.resolve(run).catch((error) => sendProblem(response, error));
 });

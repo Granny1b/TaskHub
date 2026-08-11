@@ -40,7 +40,7 @@ export function Checkbox({ checked, onChange, label, disabled, touchTarget }: Ch
         className={`flex h-[18px] w-[18px] items-center justify-center rounded-[4px] border transition-colors duration-150 ${
           checked
             ? 'border-[var(--success-600)] bg-[var(--success-500)] text-white'
-            : 'border-border-strong bg-surface group-hover:border-accent'
+            : 'border-border-control bg-surface group-hover:border-accent'
         } peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[var(--focus-ring)]`}
       >
         {checked ? <CheckIcon className="h-3.5 w-3.5" /> : null}

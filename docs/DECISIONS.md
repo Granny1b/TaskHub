@@ -650,3 +650,55 @@ task listing still works.
 **Consequences.** Non-task blobs can coexist in the container, which the
 projection blob in the Phase-2 scale plan will need. A blob whose name is not a
 ULID is not a task, which is a rule worth having explicitly.
+
+---
+
+## ADR-0031 — A separate token for interactive control boundaries
+
+**Date:** 2026-08-11 · **Status:** accepted · **Found by:** measuring contrast
+
+**Context.** The spec asks for subtle borders and 1px row separation, and
+`--border-strong` was used for both row chrome and control outlines. Measured,
+an unchecked checkbox's border was **1.48:1 on light and 1.72:1 on dark** — WCAG
+1.4.11 requires 3:1 for the boundary of a user interface component. The checkbox
+was present and effectively invisible, in the app's most-used control.
+
+**Decision.** Introduce `--border-control` (neutral-500 in both themes, 4.76:1
+light and 3.75:1 dark) for interactive boundaries, and leave `--border` subtle
+for decorative separators, which carry no such requirement.
+
+**Consequences.** Checkboxes and inputs read clearly; the dense list keeps its
+quiet separators. `scripts/` holds no checker, but the token pairs and their
+required ratios are listed in `docs/TOKENS.md` — re-measure after any palette
+change, and especially after swapping in FinalInspection's real values.
+
+**Also fixed by the same measurement:** `--danger-500` (#dc2626) measured
+3.70:1 on the dark surface, below the 4.5:1 needed for text, so destructive
+actions were the hardest thing on screen to read. Dark mode now uses #f87171
+(6.45:1).
+
+---
+
+## ADR-0032 — SEO score is deliberately low
+
+**Date:** 2026-08-11 · **Status:** accepted
+
+**Context.** Phase 6 asks for Lighthouse ≥ 90 on mobile. Measured on a 360px
+mobile emulation: **Performance 91, Accessibility 100, Best Practices 100, SEO 63.**
+
+**Decision.** The SEO score stays low, on purpose.
+
+**Rationale.** It is low because the app declares `noindex, nofollow` and a
+`robots.txt` that disallows everything. That is correct: every route requires
+authentication, so a crawler can never reach content, and an internal task
+tracker for one company should not be in a search index. Lighthouse's SEO
+category assumes you want to be found. Raising the score would mean removing the
+directive that makes the app properly unlisted.
+
+The score was _higher_ (82) before those directives existed, which is a good
+illustration of why the number is the wrong target here.
+
+**Consequences.** Judge this app on Performance, Accessibility and Best
+Practices, all of which meet the bar. Note the measurement was taken against the
+local dev server with gzip enabled to match what Static Web Apps serves; the
+real CDN should do slightly better, not worse.
