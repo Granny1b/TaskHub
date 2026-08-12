@@ -1,8 +1,12 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 //
 // Per-file rather than global: the domain and API suites are the bulk of the
-// run and have no business paying jsdom's start-up cost for a module that only
+// run and have no business paying a DOM's start-up cost for a module that only
 // needs `localStorage`.
+//
+// happy-dom rather than jsdom because vitest bundles jsdom 30, which reaches
+// for `webidl.util.markAsUncloneable` — present in Node 22, absent in Node 20,
+// which is what this project targets. See ADR-0036.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_PREFERENCES, readPreferences, setPreferences } from './preferences.js';
 
