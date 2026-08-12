@@ -27,7 +27,8 @@
     "delete": "Ta bort",
     "restore": "Återställ",
     "subtasks": "Deluppgifter",
-    "openDetails": "Öppna uppgift"
+    "openDetails": "Öppna uppgift",
+    "collapseAll": "Fäll ihop alla deluppgifter"
   },
   "percent": {
     "auto": "auto",
@@ -42,7 +43,18 @@
     "ungrouped": "Ogrupperade",
     "all": "Alla uppgifter",
     "rename": "Byt namn",
-    "delete": "Ta bort lista"
+    "delete": "Ta bort lista",
+    "color": "Färg på {{name}}",
+    "colorNone": "Ingen färg",
+    "colors": {
+      "blue": "Blå",
+      "green": "Grön",
+      "teal": "Turkos",
+      "amber": "Bärnsten",
+      "red": "Röd",
+      "purple": "Lila",
+      "pink": "Rosa"
+    }
   },
   "filters": {
     "all": "Alla",

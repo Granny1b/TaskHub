@@ -1004,3 +1004,47 @@ broken artefact can no longer reach Azure: the Deploy workflow runs this script,
 so the job fails before the upload step. If `@taskhub/shared` ever grows a
 dependency, the staged folder picks it up automatically rather than silently
 relying on hoisting.
+
+---
+
+## ADR-0038 — Editing Kommentarer from the row fetches the task first
+
+**Date:** 2026-08-12 · **Status:** accepted
+
+**Context.** Kommentarer was read-only in the list until a row was expanded or
+selected, which read as a bug: the cell looks like every other editable cell and
+refuses to take a click.
+
+It was not arbitrary. A collapsed row has never opened its blob — that is the
+point of the metadata projection (ADR-0002) — so the text it shows is
+`summary.commentsPreview`, cut at `COMMENTS_PREVIEW_LENGTH` (200). Making the
+cell editable as it stood would mean a user clicking a long comment, seeing 200
+characters, pressing Enter, and silently destroying the rest. Data loss with no
+error and no undo.
+
+**Options.**
+
+1. **Edit the preview, accept the truncation.** No.
+2. **Allow editing only when the preview is provably complete** — when it is
+   shorter than the cut. Free, but the behaviour becomes "sometimes editable",
+   which is harder to explain than "never editable" and still surprises whoever
+   hits the long one.
+3. **Put the full comment in blob metadata.** Metadata is capped at 8 KB per
+   blob across all values; comments are `COMMENTS_MAX_LENGTH` and would blow the
+   budget for every task in the list.
+4. **Fetch the document when the user asks to edit.**
+
+**Decision.** Option 4. Clicking the cell requests the aggregate, shows the
+preview meanwhile with a quiet pulse, and mounts the real editor — already
+focused, carrying the full text — the moment it lands. `InlineText` grew an
+`autoEdit` prop for that hand-off; it is read on mount, so swapping the
+placeholder for the editor is what triggers it.
+
+**Consequences.** One extra GET the first time a row's comment is edited, and
+none after — the container keeps the aggregate once loaded. There is no way to
+truncate a comment by typing in a cell. The row still renders from the listing
+alone until someone actually wants to edit, so the list view is still one
+request.
+
+**Not changed.** The mobile card shows the preview as text and does not offer
+inline editing; the detail pane is where a comment gets written on a phone.

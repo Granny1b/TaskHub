@@ -29,8 +29,11 @@ import {
   useLists,
   useRenameList,
   useReorderLists,
+  useSetListColor,
 } from '../../lib/queries.js';
 import { AccountButton } from '../settings/AccountButton.js';
+import { ListColorPicker } from './ListColorPicker.js';
+import { listColorVar } from './listColors.js';
 
 export type ListSelection = { kind: 'all' } | { kind: 'ungrouped' } | { kind: 'list'; id: string };
 
@@ -69,6 +72,7 @@ export function LeftPanel({
   const renameList = useRenameList();
   const deleteList = useDeleteList();
   const reorderLists = useReorderLists();
+  const setListColor = useSetListColor();
 
   const [creating, setCreating] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -222,6 +226,9 @@ export function LeftPanel({
                   onClick={() => choose({ kind: 'list', id: list.id })}
                   onRename={() => setRenamingId(list.id)}
                   onDelete={() => deleteList.mutate({ id: list.id, etag })}
+                  onSetColor={(colorToken) =>
+                    setListColor.mutate({ id: list.id, colorToken, etag })
+                  }
                 />
               ),
             )}
@@ -334,6 +341,7 @@ function ListRow({
   onClick,
   onRename,
   onDelete,
+  onSetColor,
 }: {
   list: TaskList;
   collapsed: boolean;
@@ -342,8 +350,10 @@ function ListRow({
   onClick: () => void;
   onRename: () => void;
   onDelete: () => void;
+  onSetColor: (colorToken: string | null) => void;
 }) {
   const { t } = useTranslation();
+  const color = listColorVar(list.colorToken);
 
   // The collapsed rail is a column of 16px icons with no labels. There is
   // nowhere for a grip to live that is not the icon itself, and no way to tell
@@ -352,7 +362,19 @@ function ListRow({
 
   return (
     <PanelItem
-      icon={<ListIcon className="h-4 w-4" />}
+      icon={
+        // Tinted through a wrapper because the icons take a className and
+        // nothing else; they draw in `currentColor`, so setting it here is
+        // enough. The user's colour outranks the active-item accent — it is
+        // what they chose, and how they find this row in a long panel.
+        color !== null ? (
+          <span style={{ color }}>
+            <ListIcon className="h-4 w-4" />
+          </span>
+        ) : (
+          <ListIcon className="h-4 w-4" />
+        )
+      }
       label={list.name}
       active={active}
       collapsed={collapsed}
@@ -387,6 +409,7 @@ function ListRow({
           })}
       trailing={
         <span className="flex items-center gap-0.5 bg-surface-raised">
+          <ListColorPicker listName={list.name} colorToken={list.colorToken} onPick={onSetColor} />
           <IconButton label={t('lists.rename')} onClick={onRename}>
             <span aria-hidden className="text-xs">
               ✎

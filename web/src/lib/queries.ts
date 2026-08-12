@@ -495,6 +495,51 @@ export function useRenameList() {
   });
 }
 
+interface SetListColorVariables {
+  id: string;
+  /** A token name from `listColors.ts`, or null for no colour. */
+  colorToken: string | null;
+  etag: string;
+}
+
+export function useSetListColor() {
+  const client = useQueryClient();
+
+  return useMutation({
+    /**
+     * Optimistic: a colour is a glance-level change, and waiting for a round
+     * trip to see it makes picking one feel broken.
+     */
+    onMutate: async ({ id, colorToken }: SetListColorVariables) => {
+      await client.cancelQueries({ queryKey: queryKeys.lists });
+
+      const previous = client.getQueryData<WithETag<TaskList[]>>(queryKeys.lists);
+      if (previous === undefined) return { previous: undefined };
+
+      cacheLists(
+        client,
+        previous.data.map((list) => (list.id === id ? { ...list, colorToken } : list)),
+        previous.etag,
+      );
+
+      return { previous };
+    },
+
+    onError: (_error, _variables, context) => {
+      if (context?.previous !== undefined) {
+        cacheLists(client, context.previous.data, context.previous.etag);
+      }
+    },
+
+    mutationFn: ({ id, colorToken, etag }: SetListColorVariables) =>
+      api.patchList(id, { colorToken }, etag),
+
+    onSuccess: (saved) => {
+      cacheLists(client, saved.data.lists, saved.etag);
+    },
+  });
+}
+
 export function useDeleteList() {
   const client = useQueryClient();
 

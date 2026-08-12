@@ -56,6 +56,17 @@ interface TaskListViewProps {
    * so repeated requests each register.
    */
   createSignal?: number;
+  /**
+   * Increments when the header asks for every row to collapse. A counter for
+   * the same reason as `createSignal`: repeated requests each have to register.
+   */
+  collapseSignal?: number;
+  /**
+   * Reports how many rows are expanded, so the header can hide a collapse-all
+   * button that would do nothing. Row expansion is this component's state and
+   * stays here; only the count leaves.
+   */
+  onExpandedCountChange?: (count: number) => void;
 }
 
 /**
@@ -73,6 +84,8 @@ export function TaskListView({
   onSelectTask,
   activeListId,
   createSignal = 0,
+  collapseSignal = 0,
+  onExpandedCountChange,
 }: TaskListViewProps) {
   const { t } = useTranslation();
   const tasks = useTasks(filter);
@@ -85,6 +98,14 @@ export function TaskListView({
   useEffect(() => {
     if (createSignal > 0) setCreating(true);
   }, [createSignal]);
+
+  useEffect(() => {
+    if (collapseSignal > 0) setExpanded(new Set());
+  }, [collapseSignal]);
+
+  useEffect(() => {
+    onExpandedCountChange?.(expanded.size);
+  }, [expanded, onExpandedCountChange]);
   const [percentSheetFor, setPercentSheetFor] = useState<{ taskId: string; node: TaskNode } | null>(
     null,
   );
@@ -409,7 +430,14 @@ function TaskRowContainer({
   onOpenPercentSheet?: ((node: TaskNode) => void) | undefined;
 }) {
   const { t } = useTranslation();
-  const needsDocument = expanded || selected;
+  /*
+    A collapsed, unselected row does not open its blob — that is the whole point
+    of the metadata projection. But editing Kommentarer needs the full text, not
+    the truncated preview, so the row can ask for it and this is where that ask
+    turns into a fetch. It sticks: once loaded, the row keeps the aggregate.
+  */
+  const [requested, setRequested] = useState(false);
+  const needsDocument = expanded || selected || requested;
   const query = useTask(needsDocument ? summary.id : null);
 
   const etag = query.data?.etag ?? summary.etag ?? '';
@@ -447,6 +475,7 @@ function TaskRowContainer({
         transition: sortable.transition,
       }}
       dragging={sortable.isDragging}
+      onRequestDocument={() => setRequested(true)}
       dragHandle={
         <button
           type="button"

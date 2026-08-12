@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { IconButton } from '../../components/Button.js';
-import { MenuIcon, PlusIcon, SearchIcon } from '../../components/icons.js';
+import { CollapseIcon, MenuIcon, PlusIcon, SearchIcon } from '../../components/icons.js';
 import type { TaskFilter } from '../../lib/apiClient.js';
 import { useIsDesktop } from '../../lib/useMediaQuery.js';
 import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts.js';
@@ -43,6 +43,9 @@ export function AppShell() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [newTaskNonce, setNewTaskNonce] = useState(0);
+  const [collapseNonce, setCollapseNonce] = useState(0);
+  // Lives here rather than in the list because the button that acts on it does.
+  const [expandedCount, setExpandedCount] = useState(0);
 
   const searchRef = useRef<HTMLInputElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -170,6 +173,17 @@ export function AppShell() {
             />
           </div>
 
+          {/* Only when there is something to collapse. A button that visibly
+              does nothing teaches people to stop trusting the toolbar. */}
+          {expandedCount > 0 ? (
+            <IconButton
+              label={t('task.collapseAll', { count: expandedCount })}
+              onClick={() => setCollapseNonce((value) => value + 1)}
+            >
+              <CollapseIcon className="h-4 w-4" />
+            </IconButton>
+          ) : null}
+
           <span className="hidden md:inline-flex">
             <IconButton label={t('task.new')} onClick={() => setNewTaskNonce((v) => v + 1)}>
               <PlusIcon className="h-4 w-4" />
@@ -189,6 +203,8 @@ export function AppShell() {
             onSelectTask={openTask}
             activeListId={activeListId}
             createSignal={newTaskNonce}
+            collapseSignal={collapseNonce}
+            onExpandedCountChange={setExpandedCount}
           />
         </main>
 

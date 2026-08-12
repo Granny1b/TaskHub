@@ -55,6 +55,13 @@ interface TaskRowProps extends RowCallbacks {
   dragging: boolean;
   /** The grip, rendered by the container so the row stays free of dnd-kit. */
   dragHandle: ReactNode;
+  /**
+   * Ask the container to load the full aggregate for this row.
+   *
+   * Editing Kommentarer needs the whole comment, not the truncated preview the
+   * listing carries — see the cell below.
+   */
+  onRequestDocument: () => void;
 }
 
 /**
@@ -81,6 +88,7 @@ export function TaskRow({
   rowStyle,
   dragging,
   dragHandle,
+  onRequestDocument,
   onPatch,
   onAddChild,
   onRemoveChild,
@@ -89,6 +97,8 @@ export function TaskRow({
 }: TaskRowProps) {
   const { t } = useTranslation();
   const [addingChild, setAddingChild] = useState(false);
+  // "The user clicked Kommentarer and is waiting for the full text."
+  const [commentsRequested, setCommentsRequested] = useState(false);
 
   // Density is a padding change, nothing more. Font size and column widths stay
   // put so switching does not reflow the whole table.
@@ -336,17 +346,48 @@ export function TaskRow({
           />
         </div>
 
-        {/* Kommentarer — a primary field, truncated to one line. Shown unless the
-            user has turned the column off in settings. */}
+        {/*
+          Kommentarer — editable straight from the row.
+
+          With a caveat that decides the whole shape of this. A collapsed row has
+          not opened its blob, so `comments` here is `summary.commentsPreview`,
+          which is cut at COMMENTS_PREVIEW_LENGTH. Editing that and saving would
+          silently delete everything past the cut.
+
+          So clicking asks for the document, shows the preview meanwhile, and the
+          real editor mounts — already focused — the moment the full text lands.
+          One extra GET the first time, and no way to truncate a comment by
+          typing in a cell.
+        */}
         {!compact && showComments ? (
           <div className="min-w-0" onClick={(event) => event.stopPropagation()}>
-            <InlineText
-              value={comments}
-              ariaLabel={t('columns.comments')}
-              disabled={document === undefined}
-              className="text-sm text-content-muted"
-              onCommit={(next) => onPatch(undefined, { comments: next })}
-            />
+            {document !== undefined ? (
+              <InlineText
+                value={comments}
+                autoEdit={commentsRequested}
+                ariaLabel={t('columns.comments')}
+                placeholder={t('task.commentsPlaceholder')}
+                className="text-sm text-content-muted"
+                onCommit={(next) => {
+                  setCommentsRequested(false);
+                  onPatch(undefined, { comments: next });
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                title={comments.length > 0 ? comments : t('task.commentsPlaceholder')}
+                onClick={() => {
+                  setCommentsRequested(true);
+                  onRequestDocument();
+                }}
+                className={`w-full truncate rounded px-1 py-0.5 text-left text-sm transition-colors duration-150 hover:bg-surface-hover ${
+                  commentsRequested ? 'animate-pulse' : ''
+                } ${comments.length > 0 ? 'text-content-muted' : 'text-content-muted/60'}`}
+              >
+                {comments.length > 0 ? comments : t('task.commentsPlaceholder')}
+              </button>
+            )}
           </div>
         ) : null}
 
