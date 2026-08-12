@@ -47,7 +47,10 @@ export async function generateThumbnail(
 
   let bitmap: ImageBitmap;
   try {
-    bitmap = await createImageBitmap(file);
+    // Without `from-image` a portrait phone photo — landscape pixels plus an
+    // EXIF rotation flag — can thumbnail sideways while the full-size version
+    // opens upright. Browsers have disagreed about the default, so it is stated.
+    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
   } catch {
     return null;
   }

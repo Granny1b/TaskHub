@@ -25,6 +25,7 @@ export const ALLOWED_EXTENSIONS = [
   'gif',
   'webp',
   'heic',
+  'heif',
   'pdf',
   'doc',
   'docx',
@@ -43,12 +44,18 @@ export const ALLOWED_EXTENSIONS = [
   'zip',
 ] as const;
 
+/**
+ * Both HEIC spellings are here because iPhones produce both: `image/heic` for a
+ * single photo and `image/heif` for the sequence container. A phone is the main
+ * camera this app has, so a photo it refuses to accept is a bug in the list.
+ */
 export const IMAGE_CONTENT_TYPES = [
   'image/jpeg',
   'image/png',
   'image/gif',
   'image/webp',
   'image/heic',
+  'image/heif',
 ] as const;
 
 export function extensionOf(fileName: string): string {

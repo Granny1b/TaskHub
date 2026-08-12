@@ -71,7 +71,9 @@
     "tooLarge": "File is too large (max {{max}} MB)",
     "notAllowed": "File type not allowed",
     "openFile": "Open",
-    "noThumbnail": "No preview"
+    "noThumbnail": "No preview",
+    "compressing": "Shrinking…",
+    "confirmDelete": "Remove this attachment?"
   },
   "conflict": {
     "banner": "This task changed while you were editing — review",
@@ -129,6 +131,13 @@
       "density": "Row height",
       "compact": "Compact",
       "comfortable": "Comfortable"
+    },
+    "images": {
+      "title": "Photos",
+      "balanced": "Shrink before uploading",
+      "balancedHint": "Photos are scaled to 2560 px and compressed. Faster on workshop wifi and cheaper to store.",
+      "original": "Keep the original",
+      "originalHint": "The image is uploaded exactly as it is. Choose this when the resolution itself is what you are documenting."
     }
   },
   "a11y": {

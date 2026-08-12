@@ -1103,3 +1103,149 @@ which is otherwise a gesture the app does not have.
 **Rejected:** keeping the two contexts and hand-rolling a hit test against the
 panel during a task drag. It works until it does not — no keyboard equivalent,
 no announcements, and a second drag system to maintain beside the first.
+
+---
+
+## ADR-0040 — Photographs are shrunk in the browser before upload
+
+**Status:** accepted · **Date:** 2026-08-12
+
+**Context.** A phone photograph is 3–5 MB and around 4000px on its longest edge.
+Nothing in the app displays one at more than a fraction of that: the grid shows
+a 400px thumbnail and opening one fills a laptop screen. Those pixels are paid
+for three times — upload time on workshop wifi, storage at rest every month
+(the largest single line in `docs/COSTS.md`), and egress on every view.
+
+The upload pipeline shipped in Phase 5 uploaded the file untouched and generated
+a thumbnail beside it, so both the 5 MB original and a 30 kB preview were stored.
+
+**Decision.** Re-encode images on a canvas in the browser before the SAS is
+requested: longest edge to 2560px, JPEG at quality 0.82. The user can turn this
+off (`imageQuality: 'original'` in preferences) for the case where the
+resolution itself is the record.
+
+**Where in the pipeline, and why it cannot move.** Compression runs _first_,
+before local validation and before the grant. The SAS is signed for one blob
+path derived from the filename, and `commit` compares the real uploaded size
+against the declared one — so a file that changes name or size after the grant
+is issued fails at the last step. Everything downstream has to see the file that
+will actually be uploaded.
+
+**2560px and 0.82 are not round numbers.** 2560 is above a 1440p screen, so a
+photo still fills any monitor in the building at full quality while a 12MP
+camera photo loses about two thirds of its pixels. Above quality ~0.85 JPEG
+files grow quickly for differences nobody sees.
+
+**What is deliberately not compressed.**
+
+| Type            | Why                                                         |
+| --------------- | ----------------------------------------------------------- |
+| GIF             | a canvas keeps the first frame; re-encoding kills animation |
+| WebP            | already efficient, and it may be animated                   |
+| < 256 kB        | nothing worth taking, and re-encoding only loses quality    |
+| everything else | a PDF drawing has to arrive byte for byte                   |
+
+PNG stays PNG rather than becoming JPEG: screenshots of drawings and error
+dialogues are mostly text, and JPEG makes text edges mushy. Resizing alone is
+the win there.
+
+**Three guards, each for a failure that actually happens.**
+
+_The candidate must be at least 10% smaller._ Re-encoding an already-optimised
+JPEG can produce a _larger_ file. Without the check, "compression" would
+sometimes cost bytes — worse than doing nothing and much harder to notice.
+
+_The output blob's own type names the file, not the type we asked for._
+`canvas.toBlob` falls back to PNG when it cannot encode the requested format.
+Naming a PNG `.jpg` is a lie the extension allowlist accepts and no viewer
+forgives, so a type with no known extension keeps the original file instead.
+
+_Every failure path returns the original._ `compressImage` returns null rather
+than throwing: a HEIC on a browser with no HEIC decoder, a canvas that will not
+allocate, a file whose extension lies. A missed saving, never a failed upload.
+
+**Two things that fall out of this, both worth having.**
+
+HEIC becomes JPEG where the browser can decode it (Safari can, Chrome cannot).
+An iPhone HEIC does not open on a Windows desktop without a codec pack, so the
+phone-to-desk handoff quietly fails today; transcoding fixes it, and where the
+decoder is missing the original is uploaded exactly as before.
+
+Re-encoding drops the EXIF block, GPS coordinates included. A photo taken on
+someone's personal phone stops carrying the location of the person who took it.
+
+**`imageOrientation: 'from-image'` is now stated explicitly**, here and in
+`generateThumbnail`. A portrait phone photo is landscape pixels plus a rotation
+flag, browsers have disagreed about whether that flag applies by default, and
+the difference is a sideways photograph. Re-encoding then bakes the rotation
+into the pixels so every later viewer agrees which way is up.
+
+**Compression is serialised across concurrent uploads**, like commits but for a
+different reason: decoding a 12MP photo costs roughly 48 MB of bitmap, and
+dropping eight at once would decode them in parallel and take most of a phone's
+memory. The tab dies rather than the upload failing politely. Uploads themselves
+stay parallel.
+
+**Consequences.** Measured end to end against Azurite through the real SAS path:
+a 4000×3000 photograph of random noise — the worst case for JPEG, since a real
+photograph has structure to exploit — went from 9.8 MB to 2.3 MB, a 77%
+reduction. Real photographs do better. The upload row shows both numbers, struck
+through, so the app says out loud that it rewrote someone's file.
+
+**Rejected:** compressing server-side. It means Function execution time and an
+image library on a footprint budgeted below €2/month, for something the browser
+already does. Also rejected: converting PNG to JPEG for the extra saving, which
+trades legible screenshots for bytes.
+
+---
+
+## ADR-0041 — Deleting an attachment is confirmed, and reachable with a thumb
+
+**Status:** accepted · **Date:** 2026-08-12
+
+**Context.** Delete was wired up in Phase 5 and looked finished: the grid
+rendered a trash `IconButton` and `AttachmentsSection` called
+`api.deleteAttachment`. It was gated on `opacity-0 group-hover:opacity-100`, so
+on a phone — no hover — the button was invisible and untappable. This is the
+third instance of the same bug in this codebase, after the drag grips in
+`LeftPanel` and `TaskRow`.
+
+**Decision.** The button stays visible on touch layouts with a 44px hit area,
+and deletion is confirmed inline on the tile rather than with a modal or a
+second tap on the same control.
+
+**The confirmation names the file.** Tiles are small and sit two or three to a
+row; "which one did I just tap" is a fair question, and the answer costs one
+line of text.
+
+**Three details that were wrong in the first version and are worth recording,
+because none of them are visible in the source.**
+
+_The overlay is opaque._ At `bg-surface/95` the filename and the trash icon
+underneath still showed through as ghosted text, which reads as a rendering
+fault rather than a deliberate overlay.
+
+_The trash button is unmounted while its own tile is confirming._ Left in place
+it stayed clickable and in the tab order _underneath_ the overlay — two controls
+named "Ta bort" on one tile.
+
+_The buttons are stacked at every width._ Side by side they wrapped their labels
+to "Ta / bort" in both the two-column phone grid and the three-column desktop
+one.
+
+**Focus lands on Cancel.** The control that opened the overlay has just been
+unmounted, so focus has to be placed somewhere or it falls to the body — and
+when the other option is destructive, the safe one is where it goes.
+
+**The confirming button's border is an inline style, not a class.** The `danger`
+variant sets `border-transparent`, and between two utilities of equal
+specificity the winner is whichever Tailwind emits later, not whichever is
+written last in the attribute. Verified in the browser: with a class the
+computed `borderColor` stayed `rgba(0, 0, 0, 0)`.
+
+**Consequences.** Nothing is destroyed. The API removes the attachment from the
+document and leaves the blob in place (§5), so a deletion is recoverable from
+storage — there is simply no button that puts it back. A failed delete now
+surfaces its message and refetches the task, because the usual cause is a stale
+ETag and the previous code discarded the rejection silently, which is
+indistinguishable from a tap that never registered.

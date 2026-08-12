@@ -22,12 +22,24 @@ import { useCallback, useEffect, useState } from 'react';
  */
 export type SubtaskDisplay = 'inline' | 'detail';
 
+/**
+ * What happens to a photograph on its way up.
+ *
+ * `balanced` — resized to 2560px and re-encoded. Far smaller, and still more
+ *              detail than any screen in the building can show at once.
+ * `original` — uploaded byte for byte. For the occasion where the photograph
+ *              *is* the measurement and full resolution is the point.
+ */
+export type ImageQuality = 'balanced' | 'original';
+
 export interface Preferences {
   readonly subtaskDisplay: SubtaskDisplay;
   /** Compact is the dense working list; comfortable adds breathing room. */
   readonly rowDensity: 'compact' | 'comfortable';
   /** Show the Kommentarer column in the list. */
   readonly showComments: boolean;
+  /** Whether photographs are shrunk before upload. */
+  readonly imageQuality: ImageQuality;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -36,6 +48,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   subtaskDisplay: 'inline',
   rowDensity: 'compact',
   showComments: true,
+  // Compressing by default is the choice that keeps the bill under €2/month
+  // without anyone having to know the setting exists.
+  imageQuality: 'balanced',
 };
 
 const STORAGE_KEY = 'taskhub.preferences';
@@ -71,6 +86,10 @@ export function readPreferences(): Preferences {
         typeof stored.showComments === 'boolean'
           ? stored.showComments
           : DEFAULT_PREFERENCES.showComments,
+      imageQuality:
+        stored.imageQuality === 'original' || stored.imageQuality === 'balanced'
+          ? stored.imageQuality
+          : DEFAULT_PREFERENCES.imageQuality,
     };
   } catch {
     return DEFAULT_PREFERENCES;

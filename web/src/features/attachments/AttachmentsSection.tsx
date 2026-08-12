@@ -1,7 +1,7 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
-import type { Attachment } from '@taskhub/shared';
+import { ALLOWED_EXTENSIONS, type Attachment } from '@taskhub/shared';
 import { Button } from '../../components/Button.js';
 import { PaperclipIcon, PlusIcon } from '../../components/icons.js';
 import { api } from '../../lib/apiClient.js';
@@ -10,6 +10,17 @@ import { AttachmentGrid } from './AttachmentGrid.js';
 import { DropZone } from './DropZone.js';
 import { MAX_UPLOAD_LABEL, UploadList } from './UploadList.js';
 import { useUploads } from './useUploads.js';
+
+/**
+ * What the file picker offers.
+ *
+ * `image/*` leads deliberately: on a phone it is what turns the picker into a
+ * menu with Photo Library and Take Photo, instead of dropping straight into a
+ * file browser. The extensions after it come from the same allowlist the server
+ * enforces, so the dialogue cannot drift from what will actually be accepted —
+ * being told "not allowed" *after* choosing a file is a poor way to find out.
+ */
+const ACCEPT = ['image/*', ...ALLOWED_EXTENSIONS.map((extension) => `.${extension}`)].join(',');
 
 interface AttachmentsSectionProps {
   taskId: string;
@@ -38,11 +49,22 @@ export function AttachmentsSection({
 
   const fileInput = useRef<HTMLInputElement>(null);
   const cameraInput = useRef<HTMLInputElement>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
   const remove = async (attachmentId: string): Promise<void> => {
-    const saved = await api.deleteAttachment(taskId, attachmentId, etag);
-    client.setQueryData(queryKeys.task(taskId), { data: saved.data, etag: saved.etag });
-    void client.invalidateQueries({ queryKey: ['tasks'] });
+    setRemoveError(null);
+    try {
+      const saved = await api.deleteAttachment(taskId, attachmentId, etag);
+      client.setQueryData(queryKeys.task(taskId), { data: saved.data, etag: saved.etag });
+      void client.invalidateQueries({ queryKey: ['tasks'] });
+    } catch (cause) {
+      // Silently swallowing this leaves the photo on screen with no explanation
+      // — indistinguishable from a delete that did not register. The usual
+      // cause is a stale ETag, so refetch: the next attempt then has a current
+      // version to write against rather than being permanently stuck.
+      setRemoveError(cause instanceof Error ? cause.message : t('common.error'));
+      void client.invalidateQueries({ queryKey: queryKeys.task(taskId) });
+    }
   };
 
   return (
@@ -56,12 +78,19 @@ export function AttachmentsSection({
 
       <UploadList uploads={uploads} onCancel={cancel} onDismiss={dismiss} />
 
+      {removeError !== null ? (
+        <p className="mb-2 text-xs text-[var(--danger-500)]" role="alert">
+          {removeError}
+        </p>
+      ) : null}
+
       {/* The whole section is a drop target, and accepts pasted screenshots. */}
       <DropZone onFiles={(files) => upload(files)} acceptPaste>
         {attachments.length > 0 ? (
           <AttachmentGrid
             taskId={taskId}
             attachments={attachments}
+            touch={compact}
             onDelete={(id) => void remove(id)}
           />
         ) : (
@@ -101,6 +130,7 @@ export function AttachmentsSection({
           ref={fileInput}
           type="file"
           multiple
+          accept={ACCEPT}
           className="hidden"
           onChange={(event) => {
             const files = event.target.files;

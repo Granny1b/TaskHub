@@ -7,6 +7,8 @@ import {
   DomainError,
 } from '@taskhub/shared';
 import { api } from '../../lib/apiClient.js';
+import { compressImage } from '../../lib/imageCompression.js';
+import { readPreferences } from '../../lib/preferences.js';
 import { queryKeys } from '../../lib/queries.js';
 import { generateThumbnail } from '../../lib/thumbnails.js';
 import { UploadCancelled, uploadToSas } from '../../lib/uploadClient.js';
@@ -14,12 +16,14 @@ import { UploadCancelled, uploadToSas } from '../../lib/uploadClient.js';
 /**
  * The upload pipeline, client side (§11).
  *
- *   1. validate locally      — instant feedback, no round trip for an obvious
+ *   1. shrink photographs    — before anything else, because everything after
+ *                              this is signed for one filename and one size
+ *   2. validate locally      — instant feedback, no round trip for an obvious
  *                              rejection like a .exe or a 40 MB file
- *   2. request a SAS         — the server validates again; it does not trust us
- *   3. PUT straight to blob  — with progress, cancellable
- *   4. thumbnail for images  — generated on a canvas, uploaded the same way
- *   5. commit                — the server checks the *actual* blob size
+ *   3. request a SAS         — the server validates again; it does not trust us
+ *   4. PUT straight to blob  — with progress, cancellable
+ *   5. thumbnail for images  — generated on a canvas, uploaded the same way
+ *   6. commit                — the server checks the *actual* blob size
  *
  * Uploads are tracked as a list of independent items so several can run at once
  * and one failure never takes the others down: dropping eight photos and having
@@ -27,7 +31,7 @@ import { UploadCancelled, uploadToSas } from '../../lib/uploadClient.js';
  */
 
 export type UploadStatus =
-  'validating' | 'uploading' | 'committing' | 'done' | 'error' | 'cancelled';
+  'preparing' | 'validating' | 'uploading' | 'committing' | 'done' | 'error' | 'cancelled';
 
 export interface UploadItem {
   readonly id: string;
@@ -36,6 +40,14 @@ export interface UploadItem {
   readonly status: UploadStatus;
   readonly percent: number;
   readonly error?: string;
+  /**
+   * What the file weighed before compression, when compression happened.
+   *
+   * Shown next to the new size: a setting that quietly rewrites people's
+   * photographs should say so while it is doing it, not only in a dialog
+   * nobody opens.
+   */
+  readonly originalBytes?: number;
 }
 
 let uploadCounter = 0;
@@ -44,25 +56,41 @@ const nextUploadId = (): string => {
   return `upload-${uploadCounter}`;
 };
 
+/**
+ * Runs work one item at a time.
+ *
+ * A promise chain rather than a lock: each turn waits for the previous one to
+ * settle — success or failure — so one rejection does not stall the queue
+ * behind it.
+ */
+function useSerialQueue(): <T>(work: () => Promise<T>) => Promise<T> {
+  const tail = useRef<Promise<unknown>>(Promise.resolve());
+
+  return useCallback(<T>(work: () => Promise<T>): Promise<T> => {
+    const result = tail.current.then(work, work);
+    tail.current = result.catch(() => undefined);
+    return result;
+  }, []);
+}
+
 export function useUploads(taskId: string) {
   const client = useQueryClient();
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const controllers = useRef(new Map<string, AbortController>());
 
-  /**
-   * Serialises the commit step across concurrent uploads.
-   *
-   * A promise chain rather than a lock: each commit waits for the previous one
-   * to settle — success or failure — so one rejected commit does not stall the
-   * queue behind it.
-   */
-  const commitQueue = useRef<Promise<unknown>>(Promise.resolve());
+  /*
+    Two things are serialised, for two different reasons.
 
-  const serialiseCommit = useCallback(<T>(work: () => Promise<T>): Promise<T> => {
-    const result = commitQueue.current.then(work, work);
-    commitQueue.current = result.catch(() => undefined);
-    return result;
-  }, []);
+    Commits, because each one is a conditional write against the task's ETag:
+    two finishing together would both write against the version they started
+    from and the second would lose with a 409.
+
+    Compression, because decoding a 12MP photo costs about 48 MB of bitmap.
+    Dropping eight at once and decoding them in parallel is most of a phone's
+    memory budget, and the tab dies rather than the upload failing politely.
+  */
+  const serialiseCommit = useSerialQueue();
+  const serialiseCompress = useSerialQueue();
 
   const update = useCallback((id: string, patch: Partial<UploadItem>) => {
     setUploads((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
@@ -84,7 +112,7 @@ export function useUploads(taskId: string) {
    * started from may be stale — and the commit is a conditional write.
    */
   const uploadOne = useCallback(
-    async (file: File, nodeId?: string): Promise<void> => {
+    async (original: File, nodeId?: string): Promise<void> => {
       const id = nextUploadId();
       const controller = new AbortController();
       controllers.current.set(id, controller);
@@ -93,15 +121,37 @@ export function useUploads(taskId: string) {
         ...current,
         {
           id,
-          fileName: file.name,
-          sizeBytes: file.size,
-          status: 'validating',
+          fileName: original.name,
+          sizeBytes: original.size,
+          status: 'preparing',
           percent: 0,
         },
       ]);
 
       try {
-        // Local validation first: rejecting a 40 MB video should not require a
+        /*
+          Compression comes first, before validation and before the grant.
+
+          The SAS is signed for one blob path, derived from the filename, and
+          the commit checks the real uploaded size against what was declared —
+          so a file that changes name or size after the grant is issued fails
+          at the last step. Everything downstream must see the file that will
+          actually be uploaded.
+        */
+        const compressed =
+          readPreferences().imageQuality === 'balanced'
+            ? await serialiseCompress(() => compressImage(original))
+            : null;
+
+        const file = compressed ?? original;
+        update(id, {
+          status: 'validating',
+          fileName: file.name,
+          sizeBytes: file.size,
+          ...(compressed !== null ? { originalBytes: original.size } : {}),
+        });
+
+        // Local validation next: rejecting a 40 MB video should not require a
         // round trip, and the error is more immediate this way.
         assertUploadAllowed({
           fileName: file.name,
@@ -146,15 +196,8 @@ export function useUploads(taskId: string) {
 
         update(id, { status: 'committing', percent: 100 });
 
-        /*
-          Commits are serialised, uploads are not.
-
-          Each commit is a conditional write against the task's ETag, so two
-          uploads finishing together would both commit against the version they
-          started from and the second would lose with a 409 — which is exactly
-          what dropping several files at once does. Uploading in parallel is
-          where the time goes and stays parallel; only the write is queued.
-        */
+        // Commits are serialised, uploads are not: the PUT is where the time
+        // goes and it stays parallel, only the conditional write is queued.
         const saved = await serialiseCommit(async () => {
           const cached = client.getQueryData<{ data: unknown; etag: string }>(
             queryKeys.task(taskId),
@@ -203,7 +246,7 @@ export function useUploads(taskId: string) {
         controllers.current.delete(id);
       }
     },
-    [taskId, client, update, dismiss, serialiseCommit],
+    [taskId, client, update, dismiss, serialiseCommit, serialiseCompress],
   );
 
   /** Upload several files concurrently; one failure does not stop the rest. */
