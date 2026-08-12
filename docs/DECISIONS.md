@@ -885,3 +885,58 @@ text needs. `docs/TOKENS.md` already warned that those steps fail as _text on
 white_, and the same numbers apply to _white on them_ — contrast is symmetric,
 which is the easy half of the rule to forget. The band now uses the 600 step
 (5.02:1) and TOKENS.md says so in both directions.
+
+---
+
+## ADR-0036 — happy-dom, and `verify` refuses to run on the wrong Node
+
+**Date:** 2026-08-12 · **Status:** accepted
+
+**Context.** Two test files declare a DOM environment: `preferences.test.ts`
+needs `localStorage`, and `useSwipeToComplete.test.ts` needs a renderer for
+`renderHook`. Both were written as `// @vitest-environment jsdom`, and both
+passed locally every time.
+
+They had never passed in CI. The suite ran locally on Node 22; `.nvmrc` and the
+workflows pin Node 20, because that is what the Static Web Apps managed
+Functions run (`staticwebapp.config.json`: `apiRuntime: node:20`). Vitest 4
+bundles jsdom 30, which loads undici 8, which calls
+`webidl.util.markAsUncloneable` — a function Node 22 has and Node 20 does not.
+On 20 both files fail to _load_: 335 tests ran instead of 354, the two missing
+files reported as errors, and `npm run verify` exited non-zero.
+
+CI had been red for four commits. It was found only when a merge to `main`
+failed to deploy — which is to say, it was found by the deployment, not by the
+tests, which is the wrong way round.
+
+**Decision, part one.** Replace jsdom with **happy-dom** as the test DOM.
+
+Downgrading jsdom cannot work: the version in play is vitest's own dependency,
+not the workspace's, so pinning `jsdom` in `web/package.json` changes nothing.
+Raising the project to Node 22 is worse — it would test the API on a runtime
+the API does not run on.
+
+Per §16, naming what a new dependency replaces and what it costs: happy-dom
+replaces jsdom, is a devDependency, and is **never shipped, so the bundle cost
+is zero**. `jsdom` is removed from `web/package.json`.
+
+**Decision, part two.** `npm run verify` now reads `.nvmrc` and **refuses to run
+on a different Node major**, with `TASKHUB_ALLOW_NODE_MISMATCH=true` as the
+explicit override.
+
+This is the more important half. The jsdom incompatibility was a day's-worth
+annoyance; the process failure behind it is that `verify` — the one command the
+whole project treats as proof — was quietly proving something about a runtime
+nobody deploys. A gate that can be green while CI is red is not a gate. It is
+now impossible to get that reassurance by accident.
+
+**Consequences.** Anyone on a different Node sees an actionable message instead
+of a false pass. The override exists so the failure is a decision rather than a
+wall, and it says in the message what the result is worth.
+
+**What this does not fix.** `verify` still cannot catch a difference between the
+CI runner and a developer machine that is not the Node major — a different
+package-lock resolution, a platform-specific path. Those are still found by CI,
+which is why CI runs even when verify is green. The lesson is narrower than "add
+a check": **look at CI after pushing.** Four commits went by without anyone
+doing so, this session included.
