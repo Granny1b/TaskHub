@@ -940,3 +940,67 @@ package-lock resolution, a platform-specific path. Those are still found by CI,
 which is why CI runs even when verify is green. The lesson is narrower than "add
 a check": **look at CI after pushing.** Four commits went by without anyone
 doing so, this session included.
+
+---
+
+## ADR-0037 — The staged API must prove it stands alone
+
+**Date:** 2026-08-12 · **Status:** accepted
+
+**Context.** The first real deployment served **404 on every API route**. The
+build was green, the deployment reported `Ready`, the bundle rendered, Entra
+sign-in worked — and Azure had registered zero functions.
+
+Two defects in `scripts/stageApi.mjs`, both of which are invisible on a
+developer machine and fatal on the target:
+
+1. **Order.** The script materialised `@taskhub/shared` into the staged
+   `node_modules` and _then_ ran `npm install`. npm prunes anything not in the
+   dependency tree, and `@taskhub/shared` is deliberately not in it — because it
+   does not exist on the registry. So npm deleted it again. The deployment log
+   said `added 61 packages, and removed 1 package`, and that removed package was
+   the entire domain layer.
+2. **Transitive dependencies.** `@taskhub/shared` needs `ulid` and `zod`. A
+   hand-copied package's `dependencies` are metadata, not instructions, so
+   nothing installed them.
+
+Both survived every check because of Node's module resolution: an import that
+fails inside `api-deploy/node_modules` keeps walking up, reaches the workspace
+root, and finds the hoisted copy. Every local test passed — including one this
+session that loaded the staged entry point and reported success. It was a false
+positive produced by the very directory the deployment does not have.
+
+The failure mode is the worst kind. An entry module that throws leaves the
+Functions host with nothing registered, and a host with no functions returns 404
+rather than 500 — indistinguishable from a routing mistake. With Application
+Insights deliberately unprovisioned (ADR: it is the classic surprise line item),
+there was no log anywhere saying so. Hours went into platform theories — the
+Node v4 programming model, ESM versus CommonJS, the storage SDK's `engines`
+field — for a bug that was in our own build script and named in our own logs.
+
+**Decision.**
+
+1. Install first, materialise second.
+2. Merge `@taskhub/shared`'s runtime dependencies into the staged
+   `package.json`, so npm installs them.
+3. **Copy the staged folder to a temp directory outside the workspace and import
+   its entry point there.** Staging fails if it does not load.
+
+**Why the third one is the point.** The first two are the bugs; the third is why
+they will not recur in a new form. A presence check over declared dependencies
+would have caught defect 1 and missed defect 2. `require.resolve` would have
+missed both, because it walks up. Only loading the folder somewhere with no
+workspace above it asks the question the deployment asks: _does this work on its
+own?_ It costs a directory copy and about a second, against an API that deploys
+clean and answers 404.
+
+This is the same lesson as ADR-0036 one day earlier: a check that runs in a more
+forgiving environment than production is not a check. There it was the Node
+version; here it is the directory tree. Both were caught by the deployment
+rather than by the tests, which is the wrong way round twice.
+
+**Consequences.** `npm run deploy`-time staging is a few seconds slower. A
+broken artefact can no longer reach Azure: the Deploy workflow runs this script,
+so the job fails before the upload step. If `@taskhub/shared` ever grows a
+dependency, the staged folder picks it up automatically rather than silently
+relying on hoisting.
