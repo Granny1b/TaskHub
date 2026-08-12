@@ -1004,3 +1004,102 @@ broken artefact can no longer reach Azure: the Deploy workflow runs this script,
 so the job fails before the upload step. If `@taskhub/shared` ever grows a
 dependency, the staged folder picks it up automatically rather than silently
 relying on hoisting.
+
+---
+
+## ADR-0038 — Editing Kommentarer from the row fetches the task first
+
+**Date:** 2026-08-12 · **Status:** accepted
+
+**Context.** Kommentarer was read-only in the list until a row was expanded or
+selected, which read as a bug: the cell looks like every other editable cell and
+refuses to take a click.
+
+It was not arbitrary. A collapsed row has never opened its blob — that is the
+point of the metadata projection (ADR-0002) — so the text it shows is
+`summary.commentsPreview`, cut at `COMMENTS_PREVIEW_LENGTH` (200). Making the
+cell editable as it stood would mean a user clicking a long comment, seeing 200
+characters, pressing Enter, and silently destroying the rest. Data loss with no
+error and no undo.
+
+**Options.**
+
+1. **Edit the preview, accept the truncation.** No.
+2. **Allow editing only when the preview is provably complete** — when it is
+   shorter than the cut. Free, but the behaviour becomes "sometimes editable",
+   which is harder to explain than "never editable" and still surprises whoever
+   hits the long one.
+3. **Put the full comment in blob metadata.** Metadata is capped at 8 KB per
+   blob across all values; comments are `COMMENTS_MAX_LENGTH` and would blow the
+   budget for every task in the list.
+4. **Fetch the document when the user asks to edit.**
+
+**Decision.** Option 4. Clicking the cell requests the aggregate, shows the
+preview meanwhile with a quiet pulse, and mounts the real editor — already
+focused, carrying the full text — the moment it lands. `InlineText` grew an
+`autoEdit` prop for that hand-off; it is read on mount, so swapping the
+placeholder for the editor is what triggers it.
+
+**Consequences.** One extra GET the first time a row's comment is edited, and
+none after — the container keeps the aggregate once loaded. There is no way to
+truncate a comment by typing in a cell. The row still renders from the listing
+alone until someone actually wants to edit, so the list view is still one
+request.
+
+**Not changed.** The mobile card shows the preview as text and does not offer
+inline editing; the detail pane is where a comment gets written on a phone.
+
+---
+
+## ADR-0039 — One drag context for the whole shell
+
+**Date:** 2026-08-12 · **Status:** accepted
+
+**Context.** Dragging a task row onto a list in the side panel should move the
+task into that list. The API already did it — `PATCH /api/tasks/{id}` with
+`listId`, which is exactly why `listId` lives on the document rather than the
+node (ADR-0004). The obstacle was entirely on the client.
+
+Drag-and-drop had grown up in two places: `TaskListView` owned a `DndContext`
+for tasks and subtasks, `LeftPanel` owned another for lists. Each was correct in
+isolation, and dnd-kit cannot drag between two contexts at all. A drop that
+crosses regions has no home in that arrangement.
+
+**Decision.** One `DndContext` above the whole shell, in `DragSurface`, which
+owns what a drop _means_:
+
+| picked up | dropped on | result                               |
+| --------- | ---------- | ------------------------------------ |
+| task      | task       | reorder the main list                |
+| task      | list       | move the task into that list         |
+| child     | child      | reorder subtasks within their parent |
+| list      | list       | reorder the side panel               |
+
+Anything else is refused. The regions below keep their own `SortableContext` and
+their own rendering; only the arbitration moved.
+
+**Two things this forced, both load-bearing.**
+
+_Collision detection is pointer-first._ `closestCenter` compares the dragged
+row's centre against every droppable, and a task row dragged onto the panel is
+still closest, by centre, to the row it came from — the panel can never win and
+the drop is impossible. `pointerWithin` asks what the user is actually
+answering: what is under my cursor. It returns nothing for a keyboard drag,
+which is what the `closestCenter` fallback is for.
+
+_The vertical-axis modifier had to become conditional._ A task has to travel
+sideways to reach the panel; pinning it to the vertical axis makes the feature
+unreachable. Subtasks and lists still only reorder within a column, and keeping
+them pinned is what stops a near-miss reading as a failed drag. So the modifier
+is applied by what is being dragged, not globally.
+
+**Consequences.** `DragSurface` reads `useTasks(filter)` and `useLists()`, which
+costs no request — TanStack Query hands back the arrays the panel and list are
+already rendering. Drop targets are desktop-only in practice: on a phone the
+panel is a drawer that is closed while you are looking at the list, so there is
+nothing to drop onto. Dropping on "Ogrupperade" removes a task from every list,
+which is otherwise a gesture the app does not have.
+
+**Rejected:** keeping the two contexts and hand-rolling a hit test against the
+panel during a task drag. It works until it does not — no keyboard equivalent,
+no announcements, and a second drag system to maintain beside the first.

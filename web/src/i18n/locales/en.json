@@ -27,7 +27,8 @@
     "delete": "Delete",
     "restore": "Restore",
     "subtasks": "Subtasks",
-    "openDetails": "Open task"
+    "openDetails": "Open task",
+    "collapseAll": "Collapse all subtasks"
   },
   "percent": {
     "auto": "auto",
@@ -42,7 +43,18 @@
     "ungrouped": "Ungrouped",
     "all": "All tasks",
     "rename": "Rename",
-    "delete": "Delete list"
+    "delete": "Delete list",
+    "color": "Colour for {{name}}",
+    "colorNone": "No colour",
+    "colors": {
+      "blue": "Blue",
+      "green": "Green",
+      "teal": "Teal",
+      "amber": "Amber",
+      "red": "Red",
+      "purple": "Purple",
+      "pink": "Pink"
+    }
   },
   "filters": {
     "all": "All",
@@ -96,7 +108,8 @@
     "picked": "Picked up {{name}}.",
     "over": "Moving to {{name}}.",
     "dropped": "Dropped {{name}} in its new position.",
-    "cancelled": "Cancelled moving {{name}}."
+    "cancelled": "Cancelled moving {{name}}.",
+    "intoList": "Moving into the list {{name}}."
   },
   "settings": {
     "title": "Settings",

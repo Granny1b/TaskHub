@@ -1,36 +1,23 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type Announcements,
-  type DragEndEvent,
-} from '@dnd-kit/core';
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
+import { useDndContext, useDroppable } from '@dnd-kit/core';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { TaskList } from '@taskhub/shared';
 import { IconButton } from '../../components/Button.js';
 import { GripIcon, InboxIcon, ListIcon, PlusIcon, TrashIcon } from '../../components/icons.js';
 import { Skeleton } from '../../components/Skeleton.js';
+import { dragDataOf, type DragItemData } from '../../lib/dragTypes.js';
 import {
   useCreateList,
   useDeleteList,
   useLists,
   useRenameList,
-  useReorderLists,
+  useSetListColor,
 } from '../../lib/queries.js';
 import { AccountButton } from '../settings/AccountButton.js';
+import { ListColorPicker } from './ListColorPicker.js';
+import { listColorVar } from './listColors.js';
 
 export type ListSelection = { kind: 'all' } | { kind: 'ungrouped' } | { kind: 'list'; id: string };
 
@@ -68,7 +55,7 @@ export function LeftPanel({
   const createList = useCreateList();
   const renameList = useRenameList();
   const deleteList = useDeleteList();
-  const reorderLists = useReorderLists();
+  const setListColor = useSetListColor();
 
   const [creating, setCreating] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -80,49 +67,6 @@ export function LeftPanel({
     onSelect(next);
     onNavigate?.();
   };
-
-  /*
-    Drag to reorder the lists.
-
-    Simpler than the task list in one way that matters: every list lives in the
-    same blob under one ETag (ADR-0004), so a move is a single conditional write
-    that either lands whole or not at all. There is no renumbering across blobs
-    to be careful about here.
-  */
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
-
-  const handleDragEnd = (event: DragEndEvent): void => {
-    const { active, over } = event;
-    if (over === null || active.id === over.id) return;
-
-    const ids = items.map((list) => list.id);
-    const toIndex = ids.indexOf(String(over.id));
-    if (toIndex === -1) return;
-
-    reorderLists.mutate({ movedId: String(active.id), toIndex, etag });
-  };
-
-  const announcements = useMemo<Announcements>(() => {
-    const nameOf = (id: string | number): string =>
-      items.find((list) => list.id === String(id))?.name ?? String(id);
-
-    return {
-      onDragStart: ({ active }) => t('dnd.picked', { name: nameOf(active.id) }),
-      onDragOver: ({ active, over }) =>
-        over === null || over.id === active.id
-          ? undefined
-          : t('dnd.over', { name: nameOf(over.id) }),
-      onDragEnd: ({ active, over }) =>
-        over === null
-          ? t('dnd.cancelled', { name: nameOf(active.id) })
-          : t('dnd.dropped', { name: nameOf(active.id) }),
-      onDragCancel: ({ active }) => t('dnd.cancelled', { name: nameOf(active.id) }),
-    };
-  }, [t, items]);
 
   return (
     <nav
@@ -161,9 +105,7 @@ export function LeftPanel({
           collapsed={collapsed}
           onClick={() => choose({ kind: 'all' })}
         />
-        <PanelItem
-          icon={<ListIcon className="h-4 w-4" />}
-          label={t('lists.ungrouped')}
+        <UngroupedRow
           active={selection.kind === 'ungrouped'}
           collapsed={collapsed}
           onClick={() => choose({ kind: 'ungrouped' })}
@@ -187,16 +129,9 @@ export function LeftPanel({
           </div>
         ) : null}
 
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          modifiers={[restrictToVerticalAxis]}
-          accessibility={{
-            announcements,
-            screenReaderInstructions: { draggable: t('dnd.instructions') },
-          }}
-          onDragEnd={handleDragEnd}
-        >
+        {/* The DndContext is in DragSurface, above the shell: a task row from
+            the list can be dropped on one of these, and that crosses regions. */}
+        <>
           <SortableContext
             items={items.map((list) => list.id)}
             strategy={verticalListSortingStrategy}
@@ -222,11 +157,14 @@ export function LeftPanel({
                   onClick={() => choose({ kind: 'list', id: list.id })}
                   onRename={() => setRenamingId(list.id)}
                   onDelete={() => deleteList.mutate({ id: list.id, etag })}
+                  onSetColor={(colorToken) =>
+                    setListColor.mutate({ id: list.id, colorToken, etag })
+                  }
                 />
               ),
             )}
           </SortableContext>
-        </DndContext>
+        </>
 
         {creating ? (
           <ListNameInput
@@ -266,6 +204,7 @@ function PanelItem({
   gripAlways,
   containerRef,
   style,
+  dropTarget,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -284,6 +223,8 @@ function PanelItem({
   gripAlways?: boolean;
   containerRef?: (node: HTMLElement | null) => void;
   style?: React.CSSProperties;
+  /** A task is hovering over this row and would land in it if released. */
+  dropTarget?: boolean;
 }) {
   // The two occupy the same 16px box, so exactly one of them may be visible at
   // a time — otherwise a touch device draws the grip on top of the icon.
@@ -295,7 +236,16 @@ function PanelItem({
         : 'transition-opacity duration-150 group-hover:opacity-0';
 
   return (
-    <div ref={containerRef} style={style} className="group relative">
+    <div
+      ref={containerRef}
+      style={style}
+      className={`group relative rounded-md ${
+        // A ring rather than a fill: the row underneath has to stay readable,
+        // because *which* list you are about to drop into is the whole question
+        // being asked.
+        dropTarget === true ? 'ring-2 ring-accent' : ''
+      }`}
+    >
       <button
         type="button"
         onClick={onClick}
@@ -334,6 +284,7 @@ function ListRow({
   onClick,
   onRename,
   onDelete,
+  onSetColor,
 }: {
   list: TaskList;
   collapsed: boolean;
@@ -342,22 +293,47 @@ function ListRow({
   onClick: () => void;
   onRename: () => void;
   onDelete: () => void;
+  onSetColor: (colorToken: string | null) => void;
 }) {
   const { t } = useTranslation();
+  const color = listColorVar(list.colorToken);
+  const draggedType = useDraggedType();
 
-  // The collapsed rail is a column of 16px icons with no labels. There is
-  // nowhere for a grip to live that is not the icon itself, and no way to tell
-  // what you are dragging, so reordering waits until the panel is open.
-  const sortable = useSortable({ id: list.id, disabled: collapsed });
+  /*
+    Both a draggable and a drop target.
+
+    Dragging it reorders the panel; dropping a *task* on it moves that task
+    into this list. `disabled` only stops the dragging half — the collapsed
+    rail has nowhere to put a grip and nothing to say what you picked up, but
+    it can still receive a task perfectly well.
+  */
+  const sortable = useSortable({
+    id: list.id,
+    disabled: collapsed,
+    data: { type: 'list', listId: list.id } satisfies DragItemData,
+  });
 
   return (
     <PanelItem
-      icon={<ListIcon className="h-4 w-4" />}
+      icon={
+        // Tinted through a wrapper because the icons take a className and
+        // nothing else; they draw in `currentColor`, so setting it here is
+        // enough. The user's colour outranks the active-item accent — it is
+        // what they chose, and how they find this row in a long panel.
+        color !== null ? (
+          <span style={{ color }}>
+            <ListIcon className="h-4 w-4" />
+          </span>
+        ) : (
+          <ListIcon className="h-4 w-4" />
+        )
+      }
       label={list.name}
       active={active}
       collapsed={collapsed}
       onClick={onClick}
       containerRef={sortable.setNodeRef}
+      dropTarget={sortable.isOver && draggedType === 'task'}
       style={{
         transform: CSS.Transform.toString(sortable.transform),
         transition: sortable.transition,
@@ -387,6 +363,7 @@ function ListRow({
           })}
       trailing={
         <span className="flex items-center gap-0.5 bg-surface-raised">
+          <ListColorPicker listName={list.name} colorToken={list.colorToken} onPick={onSetColor} />
           <IconButton label={t('lists.rename')} onClick={onRename}>
             <span aria-hidden className="text-xs">
               ✎
@@ -399,6 +376,49 @@ function ListRow({
       }
     />
   );
+}
+
+/**
+ * "Ogrupperade" as a drop target.
+ *
+ * Not a list, so nothing to reorder — but dropping a task here is the only way
+ * to take it *out* of a list, which otherwise has no gesture at all.
+ */
+function UngroupedRow({
+  active,
+  collapsed,
+  onClick,
+}: {
+  active: boolean;
+  collapsed: boolean;
+  onClick: () => void;
+}) {
+  const { t } = useTranslation();
+  // Unconditionally, at the top: `isOver && useDraggedType()` would short-
+  // circuit the hook away on the renders where nothing is hovering.
+  const draggedType = useDraggedType();
+  const { setNodeRef, isOver } = useDroppable({
+    id: 'taskhub-ungrouped',
+    data: { type: 'list', listId: null } satisfies DragItemData,
+  });
+
+  return (
+    <PanelItem
+      icon={<ListIcon className="h-4 w-4" />}
+      label={t('lists.ungrouped')}
+      active={active}
+      collapsed={collapsed}
+      onClick={onClick}
+      containerRef={setNodeRef}
+      dropTarget={isOver && draggedType === 'task'}
+    />
+  );
+}
+
+/** What is currently being dragged, app-wide, or null when nothing is. */
+function useDraggedType(): DragItemData['type'] | null {
+  const { active } = useDndContext();
+  return dragDataOf(active?.data.current)?.type ?? null;
 }
 
 function ListNameInput({

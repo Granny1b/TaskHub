@@ -10,6 +10,15 @@ interface InlineTextProps {
   /** Renders bold, for main task titles. */
   emphasis?: boolean;
   multiline?: boolean;
+  /**
+   * Mount straight into edit mode.
+   *
+   * For a field whose full value had to be fetched first: the placeholder that
+   * stood in while it loaded is swapped for this, and the user carries on typing
+   * rather than clicking a second time. Only read on mount, which is what makes
+   * the swap the trigger.
+   */
+  autoEdit?: boolean;
 }
 
 /**
@@ -29,8 +38,9 @@ export function InlineText({
   disabled,
   emphasis,
   multiline,
+  autoEdit,
 }: InlineTextProps) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(autoEdit === true);
   const [draft, setDraft] = useState(value);
   const ref = useRef<HTMLTextAreaElement | HTMLInputElement>(null);
 

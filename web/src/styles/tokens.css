@@ -62,6 +62,25 @@
   --danger-500: #dc2626;
   --danger-600: #b91c1c;
 
+  /*
+    List colours.
+
+    A user labels their own lists, so these are chosen for being *distinguishable
+    from each other* rather than for meaning anything. `colorToken` on a TaskList
+    stores the name — `blue`, not `#2563eb` — so a re-skin is an edit here and
+    nothing in the data changes.
+
+    Colour is never the only cue: the list name is always shown next to it
+    (WCAG 1.4.1). These tint a 16px icon, so they carry no text.
+  */
+  --list-blue: #2563eb;
+  --list-green: #15803d;
+  --list-amber: #b45309;
+  --list-red: #dc2626;
+  --list-purple: #7e22ce;
+  --list-teal: #0f766e;
+  --list-pink: #be185d;
+
   /* Semantic surfaces — light. These are what components actually use. */
   --surface: #ffffff;
   --surface-raised: var(--neutral-50);
@@ -140,6 +159,16 @@
   --danger-500: #f87171;
   --danger-600: #ef4444;
 
+  /* The light list colours are tuned against white and go muddy on a dark
+     surface. Same hues, lifted. */
+  --list-blue: #60a5fa;
+  --list-green: #4ade80;
+  --list-amber: #fbbf24;
+  --list-red: #f87171;
+  --list-purple: #c084fc;
+  --list-teal: #2dd4bf;
+  --list-pink: #f472b6;
+
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
   --shadow-md: 0 2px 8px -1px rgb(0 0 0 / 0.5);
   --shadow-lg: 0 8px 24px -4px rgb(0 0 0 / 0.6);
@@ -166,6 +195,16 @@
 
     --danger-500: #f87171;
     --danger-600: #ef4444;
+
+    /* The light list colours are tuned against white and go muddy on a dark
+       surface. Same hues, lifted. */
+    --list-blue: #60a5fa;
+    --list-green: #4ade80;
+    --list-amber: #fbbf24;
+    --list-red: #f87171;
+    --list-purple: #c084fc;
+    --list-teal: #2dd4bf;
+    --list-pink: #f472b6;
 
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
     --shadow-md: 0 2px 8px -1px rgb(0 0 0 / 0.5);

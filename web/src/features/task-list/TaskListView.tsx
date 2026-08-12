@@ -1,24 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-  type Announcements,
-  type DragEndEvent,
-} from '@dnd-kit/core';
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
-import {
-  SortableContext,
-  arrayMove,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { TaskNode, TaskSummary } from '@taskhub/shared';
 import { Button } from '../../components/Button.js';
@@ -26,13 +8,12 @@ import { EmptyState } from '../../components/EmptyState.js';
 import { GripIcon, InboxIcon } from '../../components/icons.js';
 import { TaskListSkeleton } from '../../components/Skeleton.js';
 import type { PatchNode, TaskFilter } from '../../lib/apiClient.js';
+import type { DragItemData } from '../../lib/dragTypes.js';
 import {
   useAddChild,
   useCreateTask,
   usePatchNode,
   useRemoveChild,
-  useReorderChildren,
-  useReorderTasks,
   useTask,
   useTasks,
 } from '../../lib/queries.js';
@@ -56,6 +37,17 @@ interface TaskListViewProps {
    * so repeated requests each register.
    */
   createSignal?: number;
+  /**
+   * Increments when the header asks for every row to collapse. A counter for
+   * the same reason as `createSignal`: repeated requests each have to register.
+   */
+  collapseSignal?: number;
+  /**
+   * Reports how many rows are expanded, so the header can hide a collapse-all
+   * button that would do nothing. Row expansion is this component's state and
+   * stays here; only the count leaves.
+   */
+  onExpandedCountChange?: (count: number) => void;
 }
 
 /**
@@ -73,6 +65,8 @@ export function TaskListView({
   onSelectTask,
   activeListId,
   createSignal = 0,
+  collapseSignal = 0,
+  onExpandedCountChange,
 }: TaskListViewProps) {
   const { t } = useTranslation();
   const tasks = useTasks(filter);
@@ -85,6 +79,14 @@ export function TaskListView({
   useEffect(() => {
     if (createSignal > 0) setCreating(true);
   }, [createSignal]);
+
+  useEffect(() => {
+    if (collapseSignal > 0) setExpanded(new Set());
+  }, [collapseSignal]);
+
+  useEffect(() => {
+    onExpandedCountChange?.(expanded.size);
+  }, [expanded, onExpandedCountChange]);
   const [percentSheetFor, setPercentSheetFor] = useState<{ taskId: string; node: TaskNode } | null>(
     null,
   );
@@ -93,8 +95,6 @@ export function TaskListView({
   const createTask = useCreateTask();
   const addChild = useAddChild();
   const removeChild = useRemoveChild();
-  const reorderTasks = useReorderTasks();
-  const reorderChildren = useReorderChildren();
 
   /*
     Subtask placement is a personal preference (settings, bottom left).
@@ -125,88 +125,8 @@ export function TaskListView({
     });
   }, []);
 
-  /*
-    Drag to reorder.
-
-    A distance constraint on the pointer, not an immediate grab: without it the
-    row's own click handlers — open the detail pane, start an inline edit —
-    would be swallowed by a drag that never happened. Touch waits instead, so a
-    finger dragged down the list scrolls it rather than picking a row up. The
-    keyboard sensor is the reason the handle is a real button: space picks the
-    row up, the arrow keys move it, space drops it.
-  */
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
-
   const summaries = tasks.data ?? [];
   const summaryIds = useMemo(() => summaries.map((summary) => summary.id), [summaries]);
-
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const { active, over } = event;
-      if (over === null || active.id === over.id) return;
-
-      const activeData = active.data.current as DragItemData | undefined;
-      const overData = over.data.current as DragItemData | undefined;
-      // A subtask dropped on the main list, or the reverse. dnd-kit reports the
-      // nearest droppable regardless of which context it belongs to, so the
-      // guard is here rather than in the collision detection.
-      if (activeData === undefined || activeData.type !== overData?.type) return;
-
-      const movedId = String(active.id);
-      const overId = String(over.id);
-
-      if (activeData.type === 'task') {
-        const from = summaryIds.indexOf(movedId);
-        const to = summaryIds.indexOf(overId);
-        if (from === -1 || to === -1) return;
-
-        // The anchor is read from the list as it will look after the move, so
-        // it means the same thing to the server as it does on screen.
-        const reordered = arrayMove(summaryIds, from, to);
-        const position = reordered.indexOf(movedId);
-        reorderTasks.mutate({
-          movedId,
-          afterId: position === 0 ? null : (reordered[position - 1] ?? null),
-          etag: activeData.etag,
-        });
-        return;
-      }
-
-      const toIndex = activeData.siblingIds.indexOf(overId);
-      if (toIndex === -1) return;
-      reorderChildren.mutate({
-        id: activeData.taskId,
-        movedId,
-        toIndex,
-        etag: activeData.etag,
-      });
-    },
-    [summaryIds, reorderTasks, reorderChildren],
-  );
-
-  /**
-   * Spoken feedback for a keyboard drag. Without this dnd-kit falls back to
-   * English defaults, which in a Swedish-first app is worse than silence.
-   */
-  const announcements = useMemo<Announcements>(
-    () => ({
-      onDragStart: ({ active }) => t('dnd.picked', { name: nameOf(active.id, summaries) }),
-      onDragOver: ({ active, over }) =>
-        over === null || over.id === active.id
-          ? undefined
-          : t('dnd.over', { name: nameOf(over.id, summaries) }),
-      onDragEnd: ({ active, over }) =>
-        over === null
-          ? t('dnd.cancelled', { name: nameOf(active.id, summaries) })
-          : t('dnd.dropped', { name: nameOf(active.id, summaries) }),
-      onDragCancel: ({ active }) => t('dnd.cancelled', { name: nameOf(active.id, summaries) }),
-    }),
-    [t, summaries],
-  );
 
   if (tasks.isLoading) return <TaskListSkeleton />;
 
@@ -249,23 +169,12 @@ export function TaskListView({
         squeezed.
       */}
       {/*
-        One DndContext for the whole list, main tasks and subtasks alike.
-
-        Nesting a second context inside each expanded row would be the obvious
-        reading of "two sortable lists", and it is a trap: the inner and outer
-        contexts both claim the same pointer event. Instead every draggable
-        carries what it is in its data, and the drop handler refuses to mix them.
+        No DndContext here. It lives in DragSurface, above the whole shell,
+        because a task row can be dropped on a list in the side panel and
+        dnd-kit cannot drag between separate contexts. What remains is the
+        SortableContext that gives these rows their order.
       */}
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        modifiers={[restrictToVerticalAxis]}
-        accessibility={{
-          announcements,
-          screenReaderInstructions: { draggable: t('dnd.instructions') },
-        }}
-        onDragEnd={handleDragEnd}
-      >
+      <>
         <div className="flex-1 overflow-auto">
           <div className={compact ? '' : 'min-w-[820px]'}>
             {!compact ? (
@@ -353,7 +262,7 @@ export function TaskListView({
             ) : null}
           </div>
         </div>
-      </DndContext>
+      </>
 
       {percentSheetFor !== null ? (
         <PercentSheetContainer
@@ -409,7 +318,14 @@ function TaskRowContainer({
   onOpenPercentSheet?: ((node: TaskNode) => void) | undefined;
 }) {
   const { t } = useTranslation();
-  const needsDocument = expanded || selected;
+  /*
+    A collapsed, unselected row does not open its blob — that is the whole point
+    of the metadata projection. But editing Kommentarer needs the full text, not
+    the truncated preview, so the row can ask for it and this is where that ask
+    turns into a fetch. It sticks: once loaded, the row keeps the aggregate.
+  */
+  const [requested, setRequested] = useState(false);
+  const needsDocument = expanded || selected || requested;
   const query = useTask(needsDocument ? summary.id : null);
 
   const etag = query.data?.etag ?? summary.etag ?? '';
@@ -447,6 +363,7 @@ function TaskRowContainer({
         transition: sortable.transition,
       }}
       dragging={sortable.isDragging}
+      onRequestDocument={() => setRequested(true)}
       dragHandle={
         <button
           type="button"
@@ -475,24 +392,6 @@ function TaskRowContainer({
       {...(onOpenPercentSheet !== undefined ? { onOpenPercentSheet } : {})}
     />
   );
-}
-
-/**
- * What a draggable carries with it.
- *
- * `type` is what stops a subtask being dropped into the main list: dnd-kit
- * reports the nearest droppable whatever context it belongs to, so the two
- * sortable lists have to be told apart at drop time. Subtasks also carry their
- * sibling ids, because the index the server wants is an index among siblings,
- * not among the rows on screen.
- */
-export type DragItemData =
-  | { type: 'task'; etag: string }
-  | { type: 'child'; taskId: string; siblingIds: string[]; etag: string };
-
-/** The title behind a drag id, for the screen-reader announcements. */
-function nameOf(id: string | number, summaries: readonly TaskSummary[]): string {
-  return summaries.find((summary) => summary.id === String(id))?.title ?? String(id);
 }
 
 function PercentSheetContainer({

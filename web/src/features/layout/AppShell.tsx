@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { IconButton } from '../../components/Button.js';
-import { MenuIcon, PlusIcon, SearchIcon } from '../../components/icons.js';
+import { CollapseIcon, MenuIcon, PlusIcon, SearchIcon } from '../../components/icons.js';
 import type { TaskFilter } from '../../lib/apiClient.js';
 import { useIsDesktop } from '../../lib/useMediaQuery.js';
 import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts.js';
@@ -19,6 +19,7 @@ const TaskDetailPane = lazy(() =>
   })),
 );
 import { TaskListView } from '../task-list/TaskListView.js';
+import { DragSurface } from './DragSurface.js';
 import { LeftPanel, type ListSelection } from './LeftPanel.js';
 
 /**
@@ -43,6 +44,9 @@ export function AppShell() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [newTaskNonce, setNewTaskNonce] = useState(0);
+  const [collapseNonce, setCollapseNonce] = useState(0);
+  // Lives here rather than in the list because the button that acts on it does.
+  const [expandedCount, setExpandedCount] = useState(0);
 
   const searchRef = useRef<HTMLInputElement>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -101,119 +105,142 @@ export function AppShell() {
   }
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-surface">
-      {/* Visible only on focus. Without it, reaching the task list by keyboard
+    /*
+      One drag surface over the whole shell.
+
+      It has to sit above both the panel and the list, because a task row is
+      picked up in one and dropped on the other, and dnd-kit cannot drag between
+      separate contexts. What a drop means lives in DragSurface; the regions
+      below only say what is draggable and what can receive.
+    */
+    <DragSurface filter={filter}>
+      <div className="flex h-dvh overflow-hidden bg-surface">
+        {/* Visible only on focus. Without it, reaching the task list by keyboard
           means tabbing through every list in the panel first. */}
-      <a
-        href="#task-list"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-accent focus:px-3 focus:py-2 focus:text-sm focus:text-accent-contrast"
-      >
-        {t('a11y.skipToContent')}
-      </a>
+        <a
+          href="#task-list"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-accent focus:px-3 focus:py-2 focus:text-sm focus:text-accent-contrast"
+        >
+          {t('a11y.skipToContent')}
+        </a>
 
-      {/* Desktop panel */}
-      <div className="hidden md:block">
-        <LeftPanel
-          selection={selection}
-          onSelect={setSelection}
-          collapsed={collapsed}
-          onToggleCollapsed={() => setCollapsed((value) => !value)}
-        />
-      </div>
-
-      {/* Mobile drawer */}
-      {drawerOpen ? (
-        <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true">
-          <button
-            type="button"
-            aria-label={t('common.close')}
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setDrawerOpen(false)}
+        {/* Desktop panel */}
+        <div className="hidden md:block">
+          <LeftPanel
+            selection={selection}
+            onSelect={setSelection}
+            collapsed={collapsed}
+            onToggleCollapsed={() => setCollapsed((value) => !value)}
           />
-          <div ref={drawerRef} className="relative h-full w-72 max-w-[85vw] shadow-lg">
-            <LeftPanel
-              selection={selection}
-              onSelect={setSelection}
-              collapsed={false}
-              touch
-              onToggleCollapsed={() => setDrawerOpen(false)}
-              onNavigate={() => setDrawerOpen(false)}
-            />
-          </div>
         </div>
-      ) : null}
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border-subtle px-2 md:px-3">
-          <span className="md:hidden">
-            <IconButton label={t('lists.title')} onClick={() => setDrawerOpen(true)} touchTarget>
-              <MenuIcon className="h-5 w-5" />
-            </IconButton>
-          </span>
-
-          <h1 className="truncate text-sm font-semibold text-content">
-            {selection.kind === 'all' ? t('lists.all') : null}
-            {selection.kind === 'ungrouped' ? t('lists.ungrouped') : null}
-            {selection.kind === 'list' ? t('lists.title') : null}
-          </h1>
-
-          <div className="relative ml-auto flex items-center">
-            <SearchIcon className="pointer-events-none absolute left-2 h-4 w-4 text-content-muted" />
-            <input
-              ref={searchRef}
-              type="search"
-              value={search}
-              placeholder={t('filters.search')}
-              aria-label={t('filters.search')}
-              onChange={(event) => setSearch(event.target.value)}
-              className="h-8 w-32 rounded-md border border-border-subtle bg-surface pl-7 pr-2 text-sm text-content outline-none focus:border-accent sm:w-48"
+        {/* Mobile drawer */}
+        {drawerOpen ? (
+          <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true">
+            <button
+              type="button"
+              aria-label={t('common.close')}
+              className="absolute inset-0 bg-black/40"
+              onClick={() => setDrawerOpen(false)}
             />
+            <div ref={drawerRef} className="relative h-full w-72 max-w-[85vw] shadow-lg">
+              <LeftPanel
+                selection={selection}
+                onSelect={setSelection}
+                collapsed={false}
+                touch
+                onToggleCollapsed={() => setDrawerOpen(false)}
+                onNavigate={() => setDrawerOpen(false)}
+              />
+            </div>
           </div>
+        ) : null}
 
-          <span className="hidden md:inline-flex">
-            <IconButton label={t('task.new')} onClick={() => setNewTaskNonce((v) => v + 1)}>
-              <PlusIcon className="h-4 w-4" />
-            </IconButton>
-          </span>
-        </header>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border-subtle px-2 md:px-3">
+            <span className="md:hidden">
+              <IconButton label={t('lists.title')} onClick={() => setDrawerOpen(true)} touchTarget>
+                <MenuIcon className="h-5 w-5" />
+              </IconButton>
+            </span>
 
-        <main id="task-list" tabIndex={-1} className="min-h-0 flex-1">
-          {/* Keyed by selection so switching lists resets row expansion, but
+            <h1 className="truncate text-sm font-semibold text-content">
+              {selection.kind === 'all' ? t('lists.all') : null}
+              {selection.kind === 'ungrouped' ? t('lists.ungrouped') : null}
+              {selection.kind === 'list' ? t('lists.title') : null}
+            </h1>
+
+            <div className="relative ml-auto flex items-center">
+              <SearchIcon className="pointer-events-none absolute left-2 h-4 w-4 text-content-muted" />
+              <input
+                ref={searchRef}
+                type="search"
+                value={search}
+                placeholder={t('filters.search')}
+                aria-label={t('filters.search')}
+                onChange={(event) => setSearch(event.target.value)}
+                className="h-8 w-32 rounded-md border border-border-subtle bg-surface pl-7 pr-2 text-sm text-content outline-none focus:border-accent sm:w-48"
+              />
+            </div>
+
+            {/* Only when there is something to collapse. A button that visibly
+              does nothing teaches people to stop trusting the toolbar. */}
+            {expandedCount > 0 ? (
+              <IconButton
+                label={t('task.collapseAll', { count: expandedCount })}
+                onClick={() => setCollapseNonce((value) => value + 1)}
+              >
+                <CollapseIcon className="h-4 w-4" />
+              </IconButton>
+            ) : null}
+
+            <span className="hidden md:inline-flex">
+              <IconButton label={t('task.new')} onClick={() => setNewTaskNonce((v) => v + 1)}>
+                <PlusIcon className="h-4 w-4" />
+              </IconButton>
+            </span>
+          </header>
+
+          <main id="task-list" tabIndex={-1} className="min-h-0 flex-1">
+            {/* Keyed by selection so switching lists resets row expansion, but
               NOT by the create signal — remounting on every "new task" would
               collapse everything the user had open. */}
-          <TaskListView
-            key={`${selection.kind}-${selection.kind === 'list' ? selection.id : ''}`}
-            filter={filter}
-            compact={!isDesktop}
-            selectedTaskId={selectedTaskId}
-            onSelectTask={openTask}
-            activeListId={activeListId}
-            createSignal={newTaskNonce}
-          />
-        </main>
+            <TaskListView
+              key={`${selection.kind}-${selection.kind === 'list' ? selection.id : ''}`}
+              filter={filter}
+              compact={!isDesktop}
+              selectedTaskId={selectedTaskId}
+              onSelectTask={openTask}
+              activeListId={activeListId}
+              createSignal={newTaskNonce}
+              collapseSignal={collapseNonce}
+              onExpandedCountChange={setExpandedCount}
+            />
+          </main>
 
-        {/* Bottom action bar: the primary action within thumb reach. */}
-        <div className="shrink-0 border-t border-border-subtle p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] md:hidden">
-          <button
-            type="button"
-            onClick={() => setNewTaskNonce((value) => value + 1)}
-            className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-accent text-sm font-medium text-accent-contrast"
-          >
-            <PlusIcon className="h-4 w-4" />
-            {t('task.new')}
-          </button>
+          {/* Bottom action bar: the primary action within thumb reach. */}
+          <div className="shrink-0 border-t border-border-subtle p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] md:hidden">
+            <button
+              type="button"
+              onClick={() => setNewTaskNonce((value) => value + 1)}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-accent text-sm font-medium text-accent-contrast"
+            >
+              <PlusIcon className="h-4 w-4" />
+              {t('task.new')}
+            </button>
+          </div>
         </div>
+
+        {/* Desktop detail pane */}
+        {isDesktop && selectedTaskId !== null ? (
+          <div className="hidden w-[380px] shrink-0 md:block lg:w-[440px]">
+            <Suspense fallback={<DetailFallback />}>
+              <TaskDetailPane taskId={selectedTaskId} onClose={closeTask} />
+            </Suspense>
+          </div>
+        ) : null}
       </div>
-
-      {/* Desktop detail pane */}
-      {isDesktop && selectedTaskId !== null ? (
-        <div className="hidden w-[380px] shrink-0 md:block lg:w-[440px]">
-          <Suspense fallback={<DetailFallback />}>
-            <TaskDetailPane taskId={selectedTaskId} onClose={closeTask} />
-          </Suspense>
-        </div>
-      ) : null}
-    </div>
+    </DragSurface>
   );
 }
 

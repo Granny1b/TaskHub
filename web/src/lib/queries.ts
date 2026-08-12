@@ -257,6 +257,70 @@ export function useReorderTasks() {
   });
 }
 
+interface MoveTaskVariables {
+  id: string;
+  /** The list to move into, or null to take it out of every list. */
+  listId: string | null;
+  etag: string;
+}
+
+/**
+ * Move a task to a different list — the drop half of dragging a row onto the
+ * side panel.
+ *
+ * A plain `listId` patch on the document. Nothing about the task itself
+ * changes: the same aggregate, the same subtasks, the same order value, just a
+ * different `listId`, which is exactly why the field lives on the document
+ * rather than the node (ADR-0004).
+ */
+export function useMoveTaskToList() {
+  const client = useQueryClient();
+
+  return useMutation({
+    /**
+     * Optimism here means one thing specifically: the row leaves the view it no
+     * longer belongs to, immediately. Inserting it into the destination's
+     * cached list is left to the refetch — we would have to guess its position
+     * in an order we do not hold.
+     */
+    onMutate: async (variables: MoveTaskVariables) => {
+      await client.cancelQueries({ queryKey: ['tasks'] });
+
+      const previous = client.getQueriesData<TaskSummary[]>({ queryKey: ['tasks'] });
+
+      for (const [key, summaries] of previous) {
+        if (summaries === undefined) continue;
+
+        // The cache key carries the filter it was fetched with, so each entry
+        // can answer for itself whether this task still belongs in it.
+        const filter = (key as readonly unknown[])[1] as TaskFilter | undefined;
+        if (filter?.listId === undefined) continue;
+        if (filter.listId === variables.listId) continue;
+
+        client.setQueryData(
+          key,
+          summaries.filter((summary) => summary.id !== variables.id),
+        );
+      }
+
+      return { previous };
+    },
+
+    onError: (_error, _variables, context) => {
+      for (const [key, summaries] of context?.previous ?? []) {
+        client.setQueryData(key, summaries);
+      }
+    },
+
+    mutationFn: ({ id, listId, etag }: MoveTaskVariables) => api.patchTask(id, { listId }, etag),
+
+    onSuccess: (saved) => {
+      cacheTask(client, saved);
+      invalidateTaskLists(client);
+    },
+  });
+}
+
 /**
  * Splice one summary into its new position.
  *
@@ -489,6 +553,51 @@ export function useRenameList() {
   return useMutation({
     mutationFn: ({ id, name, etag }: { id: string; name: string; etag: string }) =>
       api.patchList(id, { name }, etag),
+    onSuccess: (saved) => {
+      cacheLists(client, saved.data.lists, saved.etag);
+    },
+  });
+}
+
+interface SetListColorVariables {
+  id: string;
+  /** A token name from `listColors.ts`, or null for no colour. */
+  colorToken: string | null;
+  etag: string;
+}
+
+export function useSetListColor() {
+  const client = useQueryClient();
+
+  return useMutation({
+    /**
+     * Optimistic: a colour is a glance-level change, and waiting for a round
+     * trip to see it makes picking one feel broken.
+     */
+    onMutate: async ({ id, colorToken }: SetListColorVariables) => {
+      await client.cancelQueries({ queryKey: queryKeys.lists });
+
+      const previous = client.getQueryData<WithETag<TaskList[]>>(queryKeys.lists);
+      if (previous === undefined) return { previous: undefined };
+
+      cacheLists(
+        client,
+        previous.data.map((list) => (list.id === id ? { ...list, colorToken } : list)),
+        previous.etag,
+      );
+
+      return { previous };
+    },
+
+    onError: (_error, _variables, context) => {
+      if (context?.previous !== undefined) {
+        cacheLists(client, context.previous.data, context.previous.etag);
+      }
+    },
+
+    mutationFn: ({ id, colorToken, etag }: SetListColorVariables) =>
+      api.patchList(id, { colorToken }, etag),
+
     onSuccess: (saved) => {
       cacheLists(client, saved.data.lists, saved.etag);
     },

@@ -159,6 +159,20 @@ export function UndoIcon({ className = base }: IconProps) {
   );
 }
 
+/** Two chevrons meeting in the middle: fold everything shut. */
+export function CollapseIcon({ className = base }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" stroke="currentColor" aria-hidden>
+      <path
+        d="M6 8.5L10 4.5l4 4M6 11.5l4 4 4-4"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 /** Six dots: the near-universal "grab me" affordance for a reorderable row. */
 export function GripIcon({ className = base }: IconProps) {
   return (

@@ -116,6 +116,29 @@ subtly wrong against the real brand colour.
 | `--color-danger`       | `#DC2626`           | `#EF4444`          | Destructive action, validation error (4.83:1 on white — text-safe)          | ” danger                |
 | `--color-info`         | `#2563EB`           | `#60A5FA`          | Informational banner, the ETag conflict notice (5.17:1)                     | ” info                  |
 
+### List colours
+
+Seven hues a user can pin to their own lists, plus "no colour". Chosen for being
+distinguishable from each other rather than for meaning anything, and stored on
+the list as a **token name** (`blue`), never a hex — so a re-skin is an edit to
+`tokens.css` and no data migrates.
+
+| Token           | Light     | Dark      |
+| --------------- | --------- | --------- |
+| `--list-blue`   | `#2563EB` | `#60A5FA` |
+| `--list-green`  | `#15803D` | `#4ADE80` |
+| `--list-teal`   | `#0F766E` | `#2DD4BF` |
+| `--list-amber`  | `#B45309` | `#FBBF24` |
+| `--list-red`    | `#DC2626` | `#F87171` |
+| `--list-purple` | `#7E22CE` | `#C084FC` |
+| `--list-pink`   | `#BE185D` | `#F472B6` |
+
+These tint a 16px icon and a 24px swatch — no text sits on them. Colour is never
+the only cue either: the list name is always beside it (WCAG 1.4.1). The light
+values are the darker step of each hue for the same reason as the status
+colours; the dark values are lifted, because the light set goes muddy on a dark
+surface.
+
 Note the split into `-text` variants for success and warning: at the standard 600 step both fail
 4.5:1 as text on white. Keeping one token for the fill and one for the label avoids the very
 common bug of a green "Complete" label that no one over 45 can read.
