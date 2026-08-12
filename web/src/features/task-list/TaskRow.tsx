@@ -13,7 +13,7 @@ import {
 import { Checkbox } from '../../components/Checkbox.js';
 import { IconButton } from '../../components/Button.js';
 import { ChevronRightIcon, GripIcon, PaperclipIcon, PlusIcon } from '../../components/icons.js';
-import type { DragItemData } from './TaskListView.js';
+import type { DragItemData } from '../../lib/dragTypes.js';
 import type { PatchNode } from '../../lib/apiClient.js';
 import { InlineDate, InlineText } from './InlineEdit.js';
 import { PercentControl } from './PercentControl.js';

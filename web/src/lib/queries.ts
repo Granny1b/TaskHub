@@ -257,6 +257,70 @@ export function useReorderTasks() {
   });
 }
 
+interface MoveTaskVariables {
+  id: string;
+  /** The list to move into, or null to take it out of every list. */
+  listId: string | null;
+  etag: string;
+}
+
+/**
+ * Move a task to a different list — the drop half of dragging a row onto the
+ * side panel.
+ *
+ * A plain `listId` patch on the document. Nothing about the task itself
+ * changes: the same aggregate, the same subtasks, the same order value, just a
+ * different `listId`, which is exactly why the field lives on the document
+ * rather than the node (ADR-0004).
+ */
+export function useMoveTaskToList() {
+  const client = useQueryClient();
+
+  return useMutation({
+    /**
+     * Optimism here means one thing specifically: the row leaves the view it no
+     * longer belongs to, immediately. Inserting it into the destination's
+     * cached list is left to the refetch — we would have to guess its position
+     * in an order we do not hold.
+     */
+    onMutate: async (variables: MoveTaskVariables) => {
+      await client.cancelQueries({ queryKey: ['tasks'] });
+
+      const previous = client.getQueriesData<TaskSummary[]>({ queryKey: ['tasks'] });
+
+      for (const [key, summaries] of previous) {
+        if (summaries === undefined) continue;
+
+        // The cache key carries the filter it was fetched with, so each entry
+        // can answer for itself whether this task still belongs in it.
+        const filter = (key as readonly unknown[])[1] as TaskFilter | undefined;
+        if (filter?.listId === undefined) continue;
+        if (filter.listId === variables.listId) continue;
+
+        client.setQueryData(
+          key,
+          summaries.filter((summary) => summary.id !== variables.id),
+        );
+      }
+
+      return { previous };
+    },
+
+    onError: (_error, _variables, context) => {
+      for (const [key, summaries] of context?.previous ?? []) {
+        client.setQueryData(key, summaries);
+      }
+    },
+
+    mutationFn: ({ id, listId, etag }: MoveTaskVariables) => api.patchTask(id, { listId }, etag),
+
+    onSuccess: (saved) => {
+      cacheTask(client, saved);
+      invalidateTaskLists(client);
+    },
+  });
+}
+
 /**
  * Splice one summary into its new position.
  *

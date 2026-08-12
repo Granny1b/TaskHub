@@ -108,7 +108,8 @@
     "picked": "Picked up {{name}}.",
     "over": "Moving to {{name}}.",
     "dropped": "Dropped {{name}} in its new position.",
-    "cancelled": "Cancelled moving {{name}}."
+    "cancelled": "Cancelled moving {{name}}.",
+    "intoList": "Moving into the list {{name}}."
   },
   "settings": {
     "title": "Settings",
