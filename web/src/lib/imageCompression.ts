@@ -1,4 +1,4 @@
-import { thumbnailSize } from './thumbnails.js';
+import { decodeScaled } from './decodeImage.js';
 
 /**
  * Shrink photographs before they are uploaded.
@@ -132,33 +132,20 @@ export async function compressImage(
   const plan = planCompression(file.type, file.size);
   if (plan.action === 'skip') return null;
 
-  let bitmap: ImageBitmap;
-  try {
-    /*
-      `from-image` matters for phone photos specifically. A portrait shot is
-      stored as landscape pixels plus an EXIF rotation flag, and browsers have
-      disagreed about whether that flag applies by default — so being explicit
-      is the difference between a sideways photo and an upright one.
+  /*
+    Decoded straight to the target size, never at full resolution.
 
-      Re-encoding then bakes the rotation into the pixels, which means every
-      viewer afterwards agrees which way is up. It also drops the rest of the
-      EXIF block, GPS coordinates included: a photo taken on a personal phone
-      stops carrying the location of the person who took it.
-    */
-    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-  } catch {
-    // A HEIC on a browser with no HEIC decoder, or a file whose extension lies.
-    return null;
-  }
+    A 50MP photo is a 191 MB bitmap, and allocating that on a phone with other
+    tabs open does not fail politely — the browser aborts the action outright.
+    `decodeScaled` asks the decoder for the size we actually want, so peak
+    memory is the output's, not the camera's. See decodeImage.ts.
+  */
+  const bitmap = await decodeScaled(file, options.maxEdge ?? COMPRESSION_MAX_EDGE);
+  if (bitmap === null) return null;
 
   try {
-    // `thumbnailSize` is generic scaling — fit the longest edge, never enlarge.
-    // The name says where it was first needed, not where it works.
-    const { width, height } = thumbnailSize(
-      bitmap.width,
-      bitmap.height,
-      options.maxEdge ?? COMPRESSION_MAX_EDGE,
-    );
+    // Already at the target size; the canvas only re-encodes it.
+    const { width, height } = bitmap;
     if (width === 0 || height === 0) return null;
 
     const canvas = document.createElement('canvas');

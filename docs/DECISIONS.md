@@ -1382,3 +1382,65 @@ remember.
 **Rejected:** a separate index blob listing every attachment, in the style of
 `lists.json`. It duplicates what storage already knows, adds a second thing to
 keep in sync, and introduces a write-contention point on every upload.
+
+---
+
+## ADR-0044 — Photographs are decoded at target size, never at full size
+
+**Status:** accepted · **Date:** 2026-08-13
+
+**Context.** ADR-0040 added client-side compression and it worked on every
+machine it was tested on. Then it failed on a phone: uploading a photo produced
+Brave's own "För lite minne" toast and no upload, with nothing reaching the
+app's error handling at all.
+
+The arithmetic explains it. A decoded bitmap costs four bytes per pixel no
+matter what the file weighed:
+
+| Camera              | Pixels | Decoded bitmap |
+| ------------------- | ------ | -------------- |
+| 12MP (4000×3000)    | 12M    | **46 MB**      |
+| 50MP (8160×6120)    | 50M    | **191 MB**     |
+| 200MP (16320×12240) | 200M   | **762 MB**     |
+
+The first implementation decoded at full size and _then_ scaled to 2560px on a
+canvas. Allocating 191 MB on a phone with other tabs open does not throw
+something a `try`/`catch` can see — the browser aborts the action and reports it
+itself, which is why the failure was invisible to the app.
+
+**Decision.** Ask the decoder for the size we want. `createImageBitmap` takes
+`resizeWidth`/`resizeHeight`, and a JPEG's DCT layout lets a decoder downsample
+by halves almost for free, so the full bitmap is never materialised. Measured in
+Chromium on a 50MP source: **191 MB → 19 MB**, and the result is the same
+2560px image either way.
+
+**Dimensions come from an `<img>`, not from a decode.** The target size cannot
+be computed without knowing the source size, and asking `createImageBitmap` for
+it defeats the purpose. An `<img>` that is never inserted into the document
+parses the header for `naturalWidth`/`naturalHeight` and defers the pixel
+decode, so it costs about the file size rather than the bitmap size. It has a
+second advantage: those values already account for EXIF orientation, which keeps
+them consistent with the `imageOrientation: 'from-image'` decode.
+
+**Never enlarging is a memory rule here, not only a quality one.** Requesting
+2560px for a 1200px photo would allocate _more_ than decoding it untouched, on
+the device least able to spare it.
+
+**Both decode paths were affected**, and fixing only the obvious one would have
+left the crash in place. `generateThumbnail` also decoded at full size, and it
+matters most exactly when compression was skipped — a HEIC the browser cannot
+re-encode, or someone who chose "keep original" — because then the file reaching
+it is the untouched 50MP photo.
+
+**Consequences.** A browser that accepts `createImageBitmap` but not every
+option in the dictionary (older Safari) falls back to a plain decode: the old
+memory cost, which is what those browsers were living with anyway, rather than a
+failed upload. Where the header cannot be read, the fallback is the same — such
+files are small or exotic, not 50MP cameras.
+
+**What this says about the earlier verification.** Serialising compression
+(ADR-0040) bounded how many photos decode _at once_ and did nothing about how
+large a single one is, which is the case that actually broke. Every mobile check
+until now had been an emulated viewport on a desktop with gigabytes free; the
+bug needed a real phone with 45 tabs open to appear. The emulator was never
+going to find it.

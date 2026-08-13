@@ -1,3 +1,5 @@
+import { decodeScaled, scaleWithin } from './decodeImage.js';
+
 /**
  * Client-side thumbnail generation.
  *
@@ -14,22 +16,17 @@ const THUMBNAIL_QUALITY = 0.72;
  * Scale an image so its longest edge is at most `maxEdge`, preserving aspect
  * ratio. Never enlarges — a 200px image stays 200px rather than being blown up
  * into a blurry 400px one.
+ *
+ * The rule itself lives in decodeImage.ts, because the decoder needs it before
+ * any of this module's work begins. This keeps the name the tests and callers
+ * already use, and keeps the import going one way.
  */
 export function thumbnailSize(
   width: number,
   height: number,
   maxEdge = THUMBNAIL_MAX_EDGE,
 ): { width: number; height: number } {
-  if (width <= 0 || height <= 0) return { width: 0, height: 0 };
-
-  const longest = Math.max(width, height);
-  if (longest <= maxEdge) return { width: Math.round(width), height: Math.round(height) };
-
-  const scale = maxEdge / longest;
-  return {
-    width: Math.max(1, Math.round(width * scale)),
-    height: Math.max(1, Math.round(height * scale)),
-  };
+  return scaleWithin(width, height, maxEdge);
 }
 
 /**
@@ -45,18 +42,19 @@ export async function generateThumbnail(
 ): Promise<Blob | null> {
   if (typeof window === 'undefined' || typeof createImageBitmap !== 'function') return null;
 
-  let bitmap: ImageBitmap;
-  try {
-    // Without `from-image` a portrait phone photo — landscape pixels plus an
-    // EXIF rotation flag — can thumbnail sideways while the full-size version
-    // opens upright. Browsers have disagreed about the default, so it is stated.
-    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-  } catch {
-    return null;
-  }
+  /*
+    Decoded at thumbnail size rather than full size.
+
+    This path matters most when compression was skipped — a HEIC the browser
+    cannot re-encode, or someone who chose "keep original" — because then the
+    file reaching here is the untouched 50MP photo, and decoding it whole is
+    what ran a phone out of memory.
+  */
+  const bitmap = await decodeScaled(file, maxEdge);
+  if (bitmap === null) return null;
 
   try {
-    const { width, height } = thumbnailSize(bitmap.width, bitmap.height, maxEdge);
+    const { width, height } = bitmap;
     if (width === 0 || height === 0) return null;
 
     const canvas = document.createElement('canvas');
