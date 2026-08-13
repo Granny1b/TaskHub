@@ -78,7 +78,10 @@
     "confirmDelete": "Remove this attachment?",
     "noFilesInDrop": "Nothing you dropped was a file. Email cannot be dragged straight out of Outlook — save it first (File → Save As) and drop the .msg here.",
     "nothingSelected": "No picture came back from the camera. Try \"Add files\" and pick it from there.",
-    "pickerInterrupted": "Your phone shut the page down while the camera was open, so the picture never arrived. That happens when memory runs out — close some browser tabs, or take the photo in the camera app and add it with \"Add files\"."
+    "pickerInterrupted": "Your phone shut the page down while the camera was open, so the picture never arrived. That happens when memory runs out — close some browser tabs, or take the photo in the camera app and add it with \"Add files\".",
+    "takePhoto": "Take the picture",
+    "cameraDenied": "The camera is blocked for this site. Allow camera access in your browser settings, or add the picture as a file.",
+    "cameraMissing": "No camera was found. Take the picture in your camera app and add it as a file."
   },
   "conflict": {
     "banner": "This task changed while you were editing — review",

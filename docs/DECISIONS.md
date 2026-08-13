@@ -1444,3 +1444,63 @@ large a single one is, which is the case that actually broke. Every mobile check
 until now had been an emulated viewport on a desktop with gigabytes free; the
 bug needed a real phone with 45 tabs open to appear. The emulator was never
 going to find it.
+
+---
+
+## ADR-0045 — Photographs are taken inside the page, not by the camera app
+
+**Status:** accepted · **Date:** 2026-08-13
+
+**Context.** Taking a photograph from the attachments panel never worked on a
+real phone, from the day it was built. Three fixes to what happens _after_ the
+file arrives changed nothing:
+
+1. compression decoded at full size — fixed, no change
+2. `capture="environment"` was removed, and empty selections were reported —
+   no change
+3. the last full-resolution decode (an `<img>` load to read dimensions) was
+   replaced with a header parser — no change
+
+Three misses in the same place is information. What they have in common is that
+all three assume the file reaches JavaScript. The user's own account is that the
+photograph is taken successfully and the failure happens _on the way back_, with
+the phone reporting too little memory and the camera app working perfectly on
+its own.
+
+**Decision.** Stop asking the operating system for a photograph. `getUserMedia`
+puts a live camera preview inside the page, and the shutter draws the current
+frame to a canvas.
+
+There is no handoff, so there is nothing to fail: no second application starts,
+the page never leaves the foreground, and nothing has to survive being suspended
+while a camera app allocates hundreds of megabytes. The photograph is produced
+inside the page that wants it.
+
+**The resolution trade costs nothing here.** A frame from the video stream is
+smaller than what the camera app would save — but every photograph is scaled to
+2560px on upload anyway (ADR-0040), so the stream is asked for roughly that. The
+result is the same picture that would have survived compression, without ever
+building the enormous one that could not survive the journey.
+
+**The camera is released explicitly.** A track left running keeps the phone's
+camera indicator lit and the sensor powered long after the user has moved on,
+which looks like the app watching them. `stop()` runs on capture, on close and
+on unmount.
+
+**Permission refusal and a missing camera are told apart** by the error name and
+given different advice, and both offer the file picker rather than an apology —
+that path is known to work on the affected phone.
+
+**Consequences.** The site must be HTTPS, which it is, and
+`Permissions-Policy: camera=(self)` must allow it, which it already did. Desktop
+gets the same in-page camera, which is a small bonus on a laptop with a webcam
+and never worse than the file picker beside it.
+
+**What is not claimed.** The original failure is still not _explained_ — only
+avoided. Something in the OS round trip cannot complete on that phone, and this
+app is no longer part of that conversation. If the file picker ever fails the
+same way, the cause is elsewhere entirely.
+
+**Rejected:** more repairs to the file-input path. Three attempts produced three
+regressions in behaviour nobody could observe from here; a fourth would have
+been the same bet again.
