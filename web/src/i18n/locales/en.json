@@ -73,7 +73,8 @@
     "openFile": "Open",
     "noThumbnail": "No preview",
     "compressing": "Shrinking…",
-    "confirmDelete": "Remove this attachment?"
+    "confirmDelete": "Remove this attachment?",
+    "noFilesInDrop": "Nothing you dropped was a file. Email cannot be dragged straight out of Outlook — save it first (File → Save As) and drop the .msg here."
   },
   "conflict": {
     "banner": "This task changed while you were editing — review",
