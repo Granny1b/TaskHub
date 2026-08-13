@@ -206,6 +206,44 @@ Two honest caveats on that number:
 
 The single cheapest cost-control decision in the whole project is _not polling_.
 
+### 3.1 Client-side image compression, and what it does to the growth rate
+
+The arithmetic above prices a **2 GB stated baseline** growing by ~150 MB/month
+(30 uploads at ~5 MB). Since ADR-0040 the browser re-encodes photographs before
+uploading them: longest edge to 2560px, JPEG at 0.82.
+
+Measured end to end through the real SAS path, a 4000×3000 photograph of random
+noise went 9.8 MB → 2.3 MB. Random noise is the worst case for JPEG — a real
+photograph has structure to exploit and does better — so **77% is a floor, not
+a typical figure.**
+
+Taking that floor and nothing better:
+
+```
+uploads              30 / month
+before compression   30 x 5.0 MB   = 150 MB / month growth
+after  compression   30 x 1.2 MB   =  36 MB / month growth
+```
+
+At-rest cost is charged on average GB over the month, so the effect compounds
+rather than appearing as a one-off saving:
+
+| After   | Uncompressed | Compressed | At-rest cost difference |
+| ------- | -----------: | ---------: | ----------------------: |
+| 1 year  |       3.8 GB |     2.5 GB |   €0.069 vs €0.044 / mo |
+| 3 years |       7.4 GB |     3.3 GB |   €0.134 vs €0.060 / mo |
+| 5 years |      11.0 GB |     4.2 GB |   €0.199 vs €0.076 / mo |
+
+The absolute numbers stay small — the €2/month target is reached at roughly
+100 GB of attachments either way. What changes is _when_: at 150 MB/month that
+is about 54 years, at 36 MB/month about 227 — neither is a real constraint.
+The near-term win is not the bill but the upload: 5 MB over workshop wifi from a
+phone standing next to a machine is the part someone actually waits for.
+
+**This is a per-user setting and can be turned off** (`imageQuality: 'original'`
+in personal settings). If everyone turns it off, the growth rate returns to the
+uncompressed row. Nothing here is enforced server-side.
+
 ---
 
 ## 4. What would first break the free tier

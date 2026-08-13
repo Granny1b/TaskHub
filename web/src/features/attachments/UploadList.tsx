@@ -33,7 +33,11 @@ export function UploadList({ uploads, onCancel, onDismiss }: UploadListProps) {
         const failed = upload.status === 'error';
         const cancelled = upload.status === 'cancelled';
         const finished = upload.status === 'done';
-        const running = upload.status === 'uploading' || upload.status === 'validating';
+        const running =
+          upload.status === 'uploading' ||
+          upload.status === 'validating' ||
+          upload.status === 'preparing';
+        const shrunk = upload.originalBytes !== undefined;
 
         return (
           <li
@@ -44,7 +48,18 @@ export function UploadList({ uploads, onCancel, onDismiss }: UploadListProps) {
               <span className="min-w-0 flex-1 truncate text-xs text-content">
                 {upload.fileName}
               </span>
+              {/* When a photo has been shrunk, both numbers are shown. The
+                  app rewrote someone's file; saying so is the least it owes
+                  them, and it makes the setting discoverable at the moment it
+                  is relevant. */}
               <span className="shrink-0 text-xs tabular-nums text-content-muted">
+                {shrunk ? (
+                  <>
+                    <span className="line-through">
+                      {formatBytes(upload.originalBytes ?? 0)}
+                    </span>{' '}
+                  </>
+                ) : null}
                 {formatBytes(upload.sizeBytes)}
               </span>
 
@@ -85,9 +100,11 @@ export function UploadList({ uploads, onCancel, onDismiss }: UploadListProps) {
                 <span className="shrink-0 text-[11px] tabular-nums text-content-muted">
                   {cancelled
                     ? t('attachments.cancel')
-                    : upload.status === 'committing'
-                      ? t('common.loading')
-                      : `${upload.percent}%`}
+                    : upload.status === 'preparing'
+                      ? t('attachments.compressing')
+                      : upload.status === 'committing'
+                        ? t('common.loading')
+                        : `${upload.percent}%`}
                 </span>
               </div>
             )}

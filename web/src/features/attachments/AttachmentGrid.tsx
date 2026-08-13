@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { isImageContentType, type Attachment } from '@taskhub/shared';
-import { IconButton } from '../../components/Button.js';
+import { Button, IconButton } from '../../components/Button.js';
 import { PaperclipIcon, TrashIcon } from '../../components/icons.js';
 import { api } from '../../lib/apiClient.js';
 import { formatBytes } from './UploadList.js';
@@ -40,10 +40,26 @@ interface AttachmentGridProps {
   taskId: string;
   attachments: readonly Attachment[];
   onDelete: (attachmentId: string) => void;
+  /** True on phones, where nothing can hide behind a hover. */
+  touch?: boolean;
 }
 
-export function AttachmentGrid({ taskId, attachments, onDelete }: AttachmentGridProps) {
+export function AttachmentGrid({ taskId, attachments, onDelete, touch }: AttachmentGridProps) {
   const { t } = useTranslation();
+
+  /**
+   * Deleting a photograph is one tap, and the photograph may be the only record
+   * of something that has since been machined, painted or shipped. It gets a
+   * confirmation — inline on the tile rather than a modal, so it works the same
+   * with a thumb as with a mouse, and it names the file so there is no doubt
+   * which tile the tap landed on.
+   *
+   * Recoverable, but not from here: the API removes the attachment from the
+   * document and leaves the blob in place (§5), so nothing is destroyed — there
+   * is simply no button that puts it back.
+   */
+  const [confirming, setConfirming] = useState<string | null>(null);
+
   if (attachments.length === 0) return null;
 
   return (
@@ -64,15 +80,88 @@ export function AttachmentGrid({ taskId, attachments, onDelete }: AttachmentGrid
             </p>
           </div>
 
-          <span className="absolute right-1 top-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100">
-            <IconButton
-              label={t('task.delete')}
-              className="bg-surface/90"
-              onClick={() => onDelete(attachment.id)}
+          {/* A touch screen has no hover to reveal the button with, so on a
+              phone it simply stays visible. This is the same fix the drag
+              grips needed — anything gated on `group-hover` alone does not
+              exist on a phone.
+
+              It is unmounted while its own tile is asking for confirmation:
+              left in place it stays clickable and tabbable *underneath* the
+              overlay, which is two controls named "Ta bort" on one tile. */}
+          {confirming === attachment.id ? null : (
+            <span
+              className={`absolute right-1 top-1 transition-opacity duration-150 ${
+                touch === true
+                  ? 'opacity-100'
+                  : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
+              }`}
             >
-              <TrashIcon className="h-3.5 w-3.5" />
-            </IconButton>
-          </span>
+              <IconButton
+                label={t('task.delete')}
+                className="bg-surface/90"
+                touchTarget={touch === true}
+                onClick={() => setConfirming(attachment.id)}
+              >
+                <TrashIcon className="h-3.5 w-3.5" />
+              </IconButton>
+            </span>
+          )}
+
+          {confirming === attachment.id ? (
+            // Opaque, not translucent: at 95% the filename and the trash icon
+            // underneath still show through as ghosted text, which reads as a
+            // rendering fault rather than a deliberate overlay.
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-surface p-2 text-center">
+              <p className="text-xs text-content">{t('attachments.confirmDelete')}</p>
+              <p className="w-full truncate text-[11px] text-content-muted">
+                {attachment.fileName}
+              </p>
+              {/* Stacked at every width: the tile is two columns on a phone
+                  and three on a laptop, so a side-by-side pair wraps its
+                  labels ("Ta / bort") in both. */}
+              <div className="flex w-full flex-col gap-1.5">
+                {/* The danger variant is borderless — right for an inline row
+                    action, too quiet for the confirming half of a destructive
+                    pair, which has to read as a button next to Avbryt.
+                    #dc2626 measures 4.53:1 on the surface, so it can carry the
+                    border as well as the text.
+
+                    The border colour is set inline rather than with a class
+                    because the variant already sets `border-transparent`, and
+                    between two utilities of equal specificity the winner is
+                    whichever Tailwind emits later — not whichever is written
+                    last in the attribute. Verified in the browser: with a
+                    class the computed borderColor stayed rgba(0,0,0,0). */}
+                <Button
+                  size="sm"
+                  variant="danger"
+                  style={{ borderColor: 'var(--danger-500)' }}
+                  className={`w-full ${touch === true ? 'h-11' : ''}`}
+                  onClick={() => {
+                    setConfirming(null);
+                    onDelete(attachment.id);
+                  }}
+                >
+                  {t('task.delete')}
+                </Button>
+                {/*
+                  Focus lands on Cancel, not on Delete. The button that opened
+                  this overlay has just been unmounted, so focus has to be
+                  placed somewhere or it falls to the body — and the safe
+                  option is the one to put it on when the other is destructive.
+                */}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  autoFocus
+                  className={`w-full ${touch === true ? 'h-11' : ''}`}
+                  onClick={() => setConfirming(null)}
+                >
+                  {t('common.cancel')}
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </li>
       ))}
     </ul>

@@ -71,7 +71,9 @@
     "tooLarge": "Filen är för stor (max {{max}} MB)",
     "notAllowed": "Filtypen tillåts inte",
     "openFile": "Öppna",
-    "noThumbnail": "Ingen förhandsvisning"
+    "noThumbnail": "Ingen förhandsvisning",
+    "compressing": "Krymper…",
+    "confirmDelete": "Ta bort bilagan?"
   },
   "conflict": {
     "banner": "Uppgiften ändrades medan du redigerade — granska ändringarna",
@@ -129,6 +131,13 @@
       "density": "Radhöjd",
       "compact": "Kompakt",
       "comfortable": "Luftig"
+    },
+    "images": {
+      "title": "Bilder",
+      "balanced": "Krymp innan uppladdning",
+      "balancedHint": "Foton skalas till 2560 px och komprimeras. Går snabbare på verkstadens wifi och kostar mindre att lagra.",
+      "original": "Behåll originalet",
+      "originalHint": "Bilden laddas upp precis som den är. Välj detta när upplösningen i sig är det du dokumenterar."
     }
   },
   "a11y": {

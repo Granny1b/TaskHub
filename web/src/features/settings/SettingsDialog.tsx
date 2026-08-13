@@ -4,7 +4,7 @@ import { IconButton } from '../../components/Button.js';
 import { CloseIcon } from '../../components/icons.js';
 import { setLanguage, SUPPORTED_LANGUAGES } from '../../i18n/index.js';
 import { useFocusTrap } from '../../lib/useFocusTrap.js';
-import { usePreferences, type SubtaskDisplay } from '../../lib/preferences.js';
+import { usePreferences, type ImageQuality, type SubtaskDisplay } from '../../lib/preferences.js';
 import { useTheme, type ThemePreference } from '../../lib/theme.js';
 import { useMe } from '../../lib/queries.js';
 
@@ -115,6 +115,32 @@ export function SettingsDialog({ onClose }: SettingsDialogProps) {
                 ]}
               />
             </div>
+          </section>
+
+          {/*
+            Compression is on by default and changes people's files, so it is
+            stated plainly and can be turned off. Someone photographing a
+            measurement rather than a machine may want every pixel.
+          */}
+          <section>
+            <SectionTitle>{t('settings.images.title')}</SectionTitle>
+            <Choice<ImageQuality>
+              name="imageQuality"
+              value={preferences.imageQuality}
+              onChange={(imageQuality) => updatePreferences({ imageQuality })}
+              options={[
+                {
+                  value: 'balanced',
+                  label: t('settings.images.balanced'),
+                  description: t('settings.images.balancedHint'),
+                },
+                {
+                  value: 'original',
+                  label: t('settings.images.original'),
+                  description: t('settings.images.originalHint'),
+                },
+              ]}
+            />
           </section>
 
           <section>
