@@ -238,24 +238,51 @@ export function FilesView({ compact, onOpenTask }: FilesViewProps) {
                 </span>
 
                 {confirming === file.blobPath ? (
-                  <span className="flex shrink-0 items-center gap-1.5">
-                    <span className="text-xs text-content">{t('files.confirmDelete')}</span>
-                    <Button
-                      size="sm"
-                      variant="danger"
-                      style={{ borderColor: 'var(--danger-500)' }}
-                      onClick={() => remove(file)}
-                    >
-                      {t('task.delete')}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      autoFocus
-                      onClick={() => setConfirming(null)}
-                    >
-                      {t('common.cancel')}
-                    </Button>
+                  /*
+                    A file attached to a live task is deletable from here, but
+                    not silently: deleting it removes it from that task too, and
+                    the person clearing out storage is often not the person who
+                    attached it. So the warning names the task and links to it,
+                    which is the only way to check before committing to
+                    something with no undo.
+                  */
+                  <span className="flex shrink-0 flex-col items-end gap-1">
+                    <span className="text-xs text-content">
+                      {file.taskTitle !== null
+                        ? t('files.confirmDeleteAttached')
+                        : t('files.confirmDelete')}
+                    </span>
+                    {file.taskTitle !== null ? (
+                      <button
+                        type="button"
+                        // The row's subtitle already carries the bare title, so
+                        // without a distinct name this is the second identically
+                        // announced button in one row.
+                        aria-label={t('files.openTask', { name: file.taskTitle })}
+                        onClick={() => onOpenTask(file.taskId)}
+                        className="max-w-[16rem] truncate text-xs text-accent underline underline-offset-2"
+                      >
+                        {file.taskTitle}
+                      </button>
+                    ) : null}
+                    <span className="flex items-center gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        style={{ borderColor: 'var(--danger-500)' }}
+                        onClick={() => remove(file)}
+                      >
+                        {t('task.delete')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        autoFocus
+                        onClick={() => setConfirming(null)}
+                      >
+                        {t('common.cancel')}
+                      </Button>
+                    </span>
                   </span>
                 ) : (
                   <span
@@ -293,7 +320,16 @@ export function FilesView({ compact, onOpenTask }: FilesViewProps) {
           onIndexChange={setPreviewAt}
           onClose={() => setPreviewAt(null)}
           onDownload={(file) => void download(file)}
-          onDelete={(file) => remove(file)}
+          /*
+            Routed through the same confirmation as the list rather than
+            deleting outright. The preview is where someone is *looking* at the
+            photo, which is exactly where a stray tap is most expensive now that
+            deletion takes the bytes with it.
+          */
+          onDelete={(file) => {
+            setPreviewAt(null);
+            setConfirming(file.blobPath);
+          }}
         />
       ) : null}
     </div>
