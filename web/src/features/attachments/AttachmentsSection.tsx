@@ -12,6 +12,7 @@ import {
 } from '../../lib/pickerWatch.js';
 import { queryKeys } from '../../lib/queries.js';
 import { AttachmentGrid } from './AttachmentGrid.js';
+import { CameraSheet } from './CameraSheet.js';
 import { DropZone } from './DropZone.js';
 import { MAX_UPLOAD_LABEL, UploadList } from './UploadList.js';
 import { useUploads } from './useUploads.js';
@@ -66,6 +67,7 @@ export function AttachmentsSection({
    * the tab to give the camera app memory, and the photo never arrived.
    */
   const [interrupted, setInterrupted] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   useEffect(() => {
     if (consumePickerInterrupted()) setInterrupted(true);
@@ -141,6 +143,20 @@ export function AttachmentsSection({
         </p>
       ) : null}
 
+      {cameraOpen ? (
+        <CameraSheet
+          onCapture={(file) => upload([file])}
+          onClose={() => setCameraOpen(false)}
+          onFallback={() => {
+            // No camera to offer. Send them to the picker that works rather
+            // than leaving them looking at an apology.
+            setCameraOpen(false);
+            markPickerOpen();
+            fileInput.current?.click();
+          }}
+        />
+      ) : null}
+
       <DropZone
         onFiles={(files) => {
           setDropHint(false);
@@ -186,8 +202,8 @@ export function AttachmentsSection({
               variant="secondary"
               className="h-11 flex-1"
               onClick={() => {
-                markPickerOpen();
-                cameraInput.current?.click();
+                setInterrupted(false);
+                setCameraOpen(true);
               }}
             >
               {t('attachments.camera')}
