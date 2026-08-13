@@ -3,9 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { TaskNode, TaskSummary } from '@taskhub/shared';
-import { Button } from '../../components/Button.js';
+import { Button, IconButton } from '../../components/Button.js';
 import { EmptyState } from '../../components/EmptyState.js';
-import { GripIcon, InboxIcon } from '../../components/icons.js';
+import { CollapseIcon, GripIcon, InboxIcon } from '../../components/icons.js';
 import { TaskListSkeleton } from '../../components/Skeleton.js';
 import type { PatchNode, TaskFilter } from '../../lib/apiClient.js';
 import type { DragItemData } from '../../lib/dragTypes.js';
@@ -183,14 +183,48 @@ export function TaskListView({
                 style={{ gridTemplateColumns: template }}
                 role="row"
               >
-                {visibleColumns.map((column) => (
-                  <HeaderCell
-                    key={column.id}
-                    column={column}
-                    width={widthOf(column)}
-                    onResize={(width) => setWidth(column.id, width)}
-                  />
-                ))}
+                {visibleColumns.map((column) =>
+                  /*
+                    The expander column's header is the collapse-all control.
+
+                    It belongs here rather than only in the app header because
+                    this is the column the chevrons are in: the thing that
+                    collapses them all sits at the top of the stack it acts on,
+                    which is where a tree view puts it and where the eye looks.
+
+                    The app-header button stays, and is not redundant — the
+                    table header is desktop-only, so on a phone it is the only
+                    one there is.
+                  */
+                  column.id === 'expand' ? (
+                    <div key={column.id} className="flex min-w-0 items-center justify-center">
+                      {/* Hidden when nothing is expanded: a control that cannot
+                          do anything is worse than an empty cell. There is no
+                          expand-all twin, because expanding every row would
+                          open every task blob — see the `// SCALE:` note on the
+                          listing call.
+
+                          No size override on the button: IconButton's default
+                          28px is exactly this column's width, so it fills the
+                          cell. */}
+                      {expanded.size > 0 ? (
+                        <IconButton
+                          label={t('task.collapseAll', { count: expanded.size })}
+                          onClick={() => setExpanded(new Set())}
+                        >
+                          <CollapseIcon className="h-3.5 w-3.5" />
+                        </IconButton>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <HeaderCell
+                      key={column.id}
+                      column={column}
+                      width={widthOf(column)}
+                      onResize={(width) => setWidth(column.id, width)}
+                    />
+                  ),
+                )}
               </div>
             ) : null}
 
