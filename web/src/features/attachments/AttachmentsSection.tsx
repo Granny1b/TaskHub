@@ -57,6 +57,25 @@ export function AttachmentsSection({
    */
   const [dropHint, setDropHint] = useState(false);
 
+  /**
+   * Take what a picker handed back, and say so when it handed back nothing.
+   *
+   * `upload([])` does nothing at all, which is indistinguishable from the app
+   * ignoring the tap — and a camera that returns no file is exactly the case
+   * that produced "nothing happens when I take a photo".
+   */
+  const handleChosen = (files: FileList | null): void => {
+    setDropHint(false);
+    setRemoveError(null);
+
+    const chosen = files === null ? [] : Array.from(files);
+    if (chosen.length === 0) {
+      setRemoveError(t('attachments.nothingSelected'));
+      return;
+    }
+    upload(chosen);
+  };
+
   const remove = async (attachmentId: string): Promise<void> => {
     setRemoveError(null);
     try {
@@ -152,8 +171,7 @@ export function AttachmentsSection({
           accept={ACCEPT}
           className="hidden"
           onChange={(event) => {
-            const files = event.target.files;
-            if (files !== null) upload(Array.from(files));
+            handleChosen(event.target.files);
             // Reset, so selecting the same file twice in a row still fires.
             event.target.value = '';
           }}
@@ -162,12 +180,20 @@ export function AttachmentsSection({
         <input
           ref={cameraInput}
           type="file"
+          /*
+            No `capture` attribute, deliberately.
+
+            `capture="environment"` sends the browser straight into the camera
+            app, and on this shop's phones that round trip never came back with
+            a file — the picker that works is the one without it. Plain
+            `accept="image/*"` lets the OS offer its own chooser, which puts
+            Camera at the top on Android and shows "Take Photo" first on iOS.
+            One tap more, and it actually returns a photograph.
+          */
           accept="image/*"
-          capture="environment"
           className="hidden"
           onChange={(event) => {
-            const files = event.target.files;
-            if (files !== null) upload(Array.from(files));
+            handleChosen(event.target.files);
             event.target.value = '';
           }}
         />
