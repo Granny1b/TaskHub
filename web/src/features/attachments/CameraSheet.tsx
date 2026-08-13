@@ -66,6 +66,7 @@ export function CameraSheet({ onCapture, onClose, onFallback }: CameraSheetProps
   const streamRef = useRef<MediaStream | null>(null);
   const [status, setStatus] = useState<Status>('starting');
   const [failure, setFailure] = useState<string | null>(null);
+  const [permissionState, setPermissionState] = useState<string | null>(null);
 
   /**
    * Release the camera.
@@ -87,6 +88,29 @@ export function CameraSheet({ onCapture, onClose, onFallback }: CameraSheetProps
         setStatus('unavailable');
         return;
       }
+
+      /*
+        Ask the browser what it thinks the permission is, before asking for the
+        camera.
+
+        This separates three cases that look identical from the outside and need
+        completely different answers: `denied` means a decision is remembered
+        somewhere and no prompt will ever appear; `prompt` means one should
+        appear, so a failure afterwards is not about permission at all; and an
+        unsupported query means the browser will not say. Recorded either way,
+        because a phone in someone else's hand cannot be inspected from here.
+      */
+      let permission = 'unqueryable';
+      try {
+        const status = await navigator.permissions?.query({
+          name: 'camera' as PermissionName,
+        });
+        if (status !== undefined) permission = status.state;
+      } catch {
+        permission = 'unqueryable';
+      }
+      if (cancelled) return;
+      setPermissionState(permission);
 
       let stream: MediaStream | null = null;
       let lastError: unknown = null;
@@ -198,7 +222,10 @@ export function CameraSheet({ onCapture, onClose, onFallback }: CameraSheetProps
               {status === 'denied' ? t('attachments.cameraDenied') : t('attachments.cameraMissing')}
             </p>
             {failure !== null ? (
-              <p className="font-mono text-[11px] text-content-muted">{failure}</p>
+              <p className="font-mono text-[11px] text-content-muted">
+                {failure}
+                {permissionState !== null ? ` · ${permissionState}` : ''}
+              </p>
             ) : null}
             <Button
               variant="primary"
