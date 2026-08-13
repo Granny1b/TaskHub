@@ -38,11 +38,35 @@ interface CameraSheetProps {
 
 type Status = 'starting' | 'live' | 'denied' | 'unavailable';
 
+/**
+ * Constraint sets, tried in order until one opens.
+ *
+ * The first asks for the rear camera at roughly the size the upload wants. The
+ * later ones give that up piece by piece, because a phone that refuses a
+ * specific request will often satisfy a vague one — and a working camera at the
+ * wrong resolution beats a correct request that never opens. The last is the
+ * least a browser can be asked for.
+ */
+const ATTEMPTS: readonly MediaStreamConstraints[] = [
+  {
+    video: {
+      facingMode: { ideal: 'environment' },
+      width: { ideal: IDEAL_EDGE },
+      height: { ideal: IDEAL_EDGE },
+    },
+    audio: false,
+  },
+  { video: { facingMode: { ideal: 'environment' } }, audio: false },
+  { video: true, audio: false },
+];
+
 export function CameraSheet({ onCapture, onClose, onFallback }: CameraSheetProps) {
   const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [status, setStatus] = useState<Status>('starting');
+  const [failure, setFailure] = useState<string | null>(null);
+  const [permissionState, setPermissionState] = useState<string | null>(null);
 
   /**
    * Release the camera.
@@ -65,37 +89,67 @@ export function CameraSheet({ onCapture, onClose, onFallback }: CameraSheetProps
         return;
       }
 
+      /*
+        Ask the browser what it thinks the permission is, before asking for the
+        camera.
+
+        This separates three cases that look identical from the outside and need
+        completely different answers: `denied` means a decision is remembered
+        somewhere and no prompt will ever appear; `prompt` means one should
+        appear, so a failure afterwards is not about permission at all; and an
+        unsupported query means the browser will not say. Recorded either way,
+        because a phone in someone else's hand cannot be inspected from here.
+      */
+      let permission = 'unqueryable';
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            // The rear camera is the one pointed at the machine.
-            facingMode: { ideal: 'environment' },
-            width: { ideal: IDEAL_EDGE },
-            height: { ideal: IDEAL_EDGE },
-          },
-          audio: false,
+        const status = await navigator.permissions?.query({
+          name: 'camera' as PermissionName,
         });
+        if (status !== undefined) permission = status.state;
+      } catch {
+        permission = 'unqueryable';
+      }
+      if (cancelled) return;
+      setPermissionState(permission);
 
-        if (cancelled) {
-          stream.getTracks().forEach((track) => track.stop());
-          return;
-        }
+      let stream: MediaStream | null = null;
+      let lastError: unknown = null;
 
-        streamRef.current = stream;
-        if (videoRef.current !== null) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => undefined);
+      for (const constraints of ATTEMPTS) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+          break;
+        } catch (error) {
+          lastError = error;
+          // A refusal is a decision, not a bad request: retrying with weaker
+          // constraints cannot change the answer and only delays the message.
+          if (error instanceof Error && error.name === 'NotAllowedError') break;
         }
-        setStatus('live');
-      } catch (error) {
-        if (cancelled) return;
-        // A refused permission and a camera that does not exist need different
-        // advice, and the browser distinguishes them by error name.
-        const name = error instanceof Error ? error.name : '';
+      }
+
+      if (cancelled) {
+        stream?.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
+      if (stream === null) {
+        const name = lastError instanceof Error ? lastError.name : '';
+        // Kept and shown: the browser's own name for the failure is the only
+        // thing that distinguishes a blocked camera from a busy one, and it is
+        // what makes a report from a phone actionable from here.
+        setFailure(name.length > 0 ? name : 'UnknownError');
         setStatus(
           name === 'NotAllowedError' || name === 'SecurityError' ? 'denied' : 'unavailable',
         );
+        return;
       }
+
+      streamRef.current = stream;
+      if (videoRef.current !== null) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(() => undefined);
+      }
+      setStatus('live');
     };
 
     void start();
@@ -167,6 +221,12 @@ export function CameraSheet({ onCapture, onClose, onFallback }: CameraSheetProps
             <p className="text-sm text-content">
               {status === 'denied' ? t('attachments.cameraDenied') : t('attachments.cameraMissing')}
             </p>
+            {failure !== null ? (
+              <p className="font-mono text-[11px] text-content-muted">
+                {failure}
+                {permissionState !== null ? ` · ${permissionState}` : ''}
+              </p>
+            ) : null}
             <Button
               variant="primary"
               onClick={() => {
