@@ -7,8 +7,8 @@ export interface Shortcuts {
 }
 
 /**
- * Global keyboard shortcuts: `/` focuses search, `n` creates a task, `Esc`
- * closes the detail pane.
+ * Global keyboard shortcuts: `Ctrl`/`Cmd`+`K` or `/` focuses search, `n`
+ * creates a task, `Esc` closes the detail pane.
  *
  * The guard below matters more than the shortcuts do. Almost every cell in this
  * app becomes an input on click, so firing `n` while someone is typing a task
@@ -27,6 +27,23 @@ export function useKeyboardShortcuts({ onSearch, onNewTask, onEscape }: Shortcut
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
         onEscape?.();
+        return;
+      }
+
+      /*
+        Ctrl+K is checked before the modifier guard and before the editable
+        guard, because it has to work from anywhere — including from inside the
+        search box itself, and from inside a cell someone is halfway through
+        typing in. That is the whole point of it: one key that always gets you
+        to search, unlike `/`, which types a slash when a field has focus.
+
+        `metaKey` covers Mac, where Cmd+K is the same gesture. The browser's own
+        Ctrl+K (search-bar focus in some browsers) is pre-empted deliberately —
+        inside a web app, this is the one people mean.
+      */
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        onSearch?.();
         return;
       }
 

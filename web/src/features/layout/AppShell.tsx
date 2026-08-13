@@ -1,9 +1,10 @@
-import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams } from 'react-router-dom';
 import { IconButton } from '../../components/Button.js';
-import { CollapseIcon, MenuIcon, PlusIcon, SearchIcon } from '../../components/icons.js';
+import { CheckIcon, CollapseIcon, MenuIcon, PlusIcon, SearchIcon } from '../../components/icons.js';
 import type { TaskFilter } from '../../lib/apiClient.js';
+import { searchShortcutLabel } from '../../lib/shortcutLabel.js';
 import { useIsDesktop } from '../../lib/useMediaQuery.js';
 import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts.js';
 import { useFocusTrap } from '../../lib/useFocusTrap.js';
@@ -44,12 +45,21 @@ export function AppShell() {
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [search, setSearch] = useState('');
+  /**
+   * Whether finished work stays in the list.
+   *
+   * Defaults to showing everything, which is what the workbook did — hiding
+   * rows on day one would look like data loss to someone migrating.
+   */
+  const [showCompleted, setShowCompleted] = useState(true);
   const [newTaskNonce, setNewTaskNonce] = useState(0);
   const [collapseNonce, setCollapseNonce] = useState(0);
   // Lives here rather than in the list because the button that acts on it does.
   const [expandedCount, setExpandedCount] = useState(0);
 
   const searchRef = useRef<HTMLInputElement>(null);
+  // Read once: the platform does not change while the app is open.
+  const shortcutLabel = useMemo(() => searchShortcutLabel(), []);
   const drawerRef = useRef<HTMLDivElement>(null);
   const selectedTaskId = params.taskId ?? null;
 
@@ -84,10 +94,23 @@ export function AppShell() {
     if (isDesktop) setDrawerOpen(false);
   }, [isDesktop]);
 
+  const searching = search.length > 0;
+
+  /*
+    Searching always looks everywhere.
+
+    "Hide completed" is a way of tidying the working list, not a statement that
+    finished work is uninteresting — and the single most common reason to search
+    is to find something you already did. A search that silently skipped
+    completed tasks would answer "no results" to a question that has one, which
+    is the worst possible failure for a search box. So the completion filter is
+    dropped for the duration of a query.
+  */
   const filter: TaskFilter = {
     ...(selection.kind === 'list' ? { listId: selection.id } : {}),
     ...(selection.kind === 'ungrouped' ? { listId: null } : {}),
     ...(search.length > 0 ? { q: search } : {}),
+    ...(!showCompleted && !searching ? { isComplete: false } : {}),
   };
 
   const activeListId = selection.kind === 'list' ? selection.id : null;
@@ -172,7 +195,28 @@ export function AppShell() {
               {selection.kind === 'files' ? t('files.title') : null}
             </h1>
 
-            <div className="relative ml-auto flex items-center">
+            {/* Hide or show finished work. Not shown in the files view, which
+              has no notion of completion. */}
+            {selection.kind !== 'files' ? (
+              <button
+                type="button"
+                aria-pressed={!showCompleted}
+                onClick={() => setShowCompleted((value) => !value)}
+                title={showCompleted ? t('filters.hideCompleted') : t('filters.showCompleted')}
+                className={`ml-auto hidden h-8 shrink-0 items-center gap-1.5 rounded-md border px-2 text-xs transition-colors duration-150 sm:inline-flex ${
+                  showCompleted
+                    ? 'border-border-subtle text-content-muted hover:bg-surface-hover'
+                    : 'border-accent bg-surface-selected font-medium text-content'
+                }`}
+              >
+                <CheckIcon className="h-3.5 w-3.5" />
+                {showCompleted ? t('filters.hideCompleted') : t('filters.showCompleted')}
+              </button>
+            ) : null}
+
+            <div
+              className={`relative flex items-center ${selection.kind === 'files' ? 'ml-auto' : 'ml-2'}`}
+            >
               <SearchIcon className="pointer-events-none absolute left-2 h-4 w-4 text-content-muted" />
               <input
                 ref={searchRef}
@@ -181,8 +225,24 @@ export function AppShell() {
                 placeholder={t('filters.search')}
                 aria-label={t('filters.search')}
                 onChange={(event) => setSearch(event.target.value)}
-                className="h-8 w-32 rounded-md border border-border-subtle bg-surface pl-7 pr-2 text-sm text-content outline-none focus:border-accent sm:w-48"
+                className="h-8 w-32 rounded-md border border-border-subtle bg-surface pl-7 pr-12 text-sm text-content outline-none focus:border-accent sm:w-56"
               />
+              {/*
+                The shortcut, shown where the shortcut is for.
+
+                `aria-hidden` because it is a hint about a key, not a control and
+                not part of the field's name — a screen reader announcing
+                "Sök Ctrl K" would be reading decoration as label. It hides once
+                there is text, where it would otherwise sit on top of it.
+              */}
+              {search.length === 0 ? (
+                <kbd
+                  aria-hidden
+                  className="pointer-events-none absolute right-2 hidden rounded border border-border-subtle bg-surface-sunken px-1 py-0.5 font-sans text-[10px] leading-none text-content-muted sm:block"
+                >
+                  {shortcutLabel}
+                </kbd>
+              ) : null}
             </div>
 
             {/* Only when there is something to collapse. A button that visibly

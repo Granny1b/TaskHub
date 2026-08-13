@@ -60,7 +60,9 @@
     "all": "All",
     "open": "Open",
     "completed": "Completed",
-    "search": "Search"
+    "search": "Search",
+    "hideCompleted": "Hide done",
+    "showCompleted": "Show done"
   },
   "attachments": {
     "add": "Add files",

@@ -60,7 +60,9 @@
     "all": "Alla",
     "open": "Öppna",
     "completed": "Klara",
-    "search": "Sök"
+    "search": "Sök",
+    "hideCompleted": "Dölj klara",
+    "showCompleted": "Visa klara"
   },
   "attachments": {
     "add": "Lägg till filer",
