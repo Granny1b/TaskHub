@@ -168,6 +168,8 @@
     "noMatches": "No files match your search",
     "previous": "Previous file",
     "next": "Next file",
-    "noPreview": "This file type cannot be shown here"
+    "noPreview": "This file type cannot be shown here",
+    "confirmDeleteAttached": "Deleted permanently and removed from the task:",
+    "openTask": "Open the task {{name}}"
   }
 }

@@ -337,10 +337,25 @@ export class AttachmentService {
    * is no document to write and no ETag to check — only bytes to remove.
    */
   async removeOrphan(taskId: string, attachmentId: string): Promise<number> {
-    // Refuse if a task still references it: that route has to go through
-    // `remove`, which writes the document under an If-Match first.
+    /*
+      Refuse only if a *live* task still references it: that route has to go
+      through `remove`, which writes the document under an If-Match first.
+
+      `deletedAt` is the load-bearing part. `listStoredFiles` joins against
+      `list({})`, which skips soft-deleted tasks, so a file belonging to one is
+      shown as having no task and offered for deletion. The repository's `get`
+      returns soft-deleted documents, so without this check the server would
+      answer "still attached to a task" for a file the view just called
+      unattached — and since `remove` refuses soft-deleted tasks too, that file
+      could be deleted by neither path. Both ends now mean the same thing by
+      "orphan": no live task references it.
+    */
     const task = await this.tasks.get(taskId);
-    if (task !== null && findAttachment(task.document, attachmentId) !== null) {
+    if (
+      task !== null &&
+      task.document.deletedAt === null &&
+      findAttachment(task.document, attachmentId) !== null
+    ) {
       throw new DomainError(
         'invalid_operation',
         'That file is still attached to a task; delete it from the task instead',

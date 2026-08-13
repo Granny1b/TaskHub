@@ -168,6 +168,8 @@
     "noMatches": "Inga filer matchar sökningen",
     "previous": "Föregående fil",
     "next": "Nästa fil",
-    "noPreview": "Den här filtypen kan inte visas här"
+    "noPreview": "Den här filtypen kan inte visas här",
+    "confirmDeleteAttached": "Raderas permanent och tas bort från uppgiften:",
+    "openTask": "Öppna uppgiften {{name}}"
   }
 }

@@ -1,5 +1,10 @@
 import { BlobServiceClient, type ContainerClient } from '@azure/storage-blob';
-import { createContext, createTaskDocument, type TaskDocument } from '@taskhub/shared';
+import {
+  createContext,
+  createTaskDocument,
+  softDeleteDocument,
+  type TaskDocument,
+} from '@taskhub/shared';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { AttachmentService } from '../domain/attachmentService.js';
 import { BlobAttachmentStorage, credentialFromConnectionString } from './BlobAttachmentStorage.js';
@@ -406,5 +411,84 @@ describe('removing an attachment', () => {
     expect(mine[0]?.fileName).toBe('bild.jpg');
     expect(mine[0]?.taskTitle).toBe('För fillistan');
     expect(mine[0]?.sizeBytes).toBe(bytes.length);
+  });
+});
+
+describe('deleting a file whose task is gone', () => {
+  it('lists it as unattached and lets it be deleted', async () => {
+    /*
+      The regression this exists for.
+
+      `listStoredFiles` joins against `list({})`, which skips soft-deleted
+      tasks, so a file belonging to one is shown as having no task and offered
+      for deletion. `removeOrphan` asked the repository, which *does* return
+      soft-deleted documents, and refused with "still attached to a task" — so
+      the file could be deleted by neither path and its bytes were stranded.
+    */
+    const task = await seedTask('Ska tas bort');
+    const bytes = Buffer.alloc(256, 4);
+
+    const grant = await service.createUploadGrant(task.document.id, {
+      fileName: 'foto.jpg',
+      contentType: 'image/jpeg',
+      sizeBytes: bytes.length,
+    });
+    await putToSas(grant.uploadUrl, bytes, 'image/jpeg');
+
+    const committed = await service.commit(
+      task.document.id,
+      {
+        attachmentId: grant.attachmentId,
+        fileName: 'foto.jpg',
+        contentType: 'image/jpeg',
+        sizeBytes: bytes.length,
+        blobPath: grant.blobPath,
+      },
+      task.etag,
+      ctx(),
+    );
+
+    await repository.replace(
+      softDeleteDocument(committed.saved.document, ctx()),
+      committed.saved.etag,
+    );
+
+    // The view calls it unattached...
+    const listed = await service.listStoredFiles();
+    const mine = listed.find((file) => file.attachmentId === grant.attachmentId);
+    expect(mine?.taskTitle).toBeNull();
+
+    // ...so deleting it has to actually work, and take the bytes with it.
+    await service.removeOrphan(task.document.id, grant.attachmentId);
+    expect((await storage.statBlob(grant.blobPath)).exists).toBe(false);
+  });
+
+  it('still refuses a file a live task references', async () => {
+    // The guard has to keep working: that path writes the document under an
+    // If-Match first, and skipping it would leave the task pointing at nothing.
+    const task = await seedTask('Lever fortfarande');
+    const bytes = Buffer.alloc(128, 6);
+
+    const grant = await service.createUploadGrant(task.document.id, {
+      fileName: 'kvar.jpg',
+      contentType: 'image/jpeg',
+      sizeBytes: bytes.length,
+    });
+    await putToSas(grant.uploadUrl, bytes, 'image/jpeg');
+    await service.commit(
+      task.document.id,
+      {
+        attachmentId: grant.attachmentId,
+        fileName: 'kvar.jpg',
+        contentType: 'image/jpeg',
+        sizeBytes: bytes.length,
+        blobPath: grant.blobPath,
+      },
+      task.etag,
+      ctx(),
+    );
+
+    await expect(service.removeOrphan(task.document.id, grant.attachmentId)).rejects.toThrow();
+    expect((await storage.statBlob(grant.blobPath)).exists).toBe(true);
   });
 });
