@@ -18,6 +18,7 @@ const TaskDetailPane = lazy(() =>
     default: module.TaskDetailPane,
   })),
 );
+import { FilesView } from '../files/FilesView.js';
 import { TaskListView } from '../task-list/TaskListView.js';
 import { DragSurface } from './DragSurface.js';
 import { LeftPanel, type ListSelection } from './LeftPanel.js';
@@ -168,6 +169,7 @@ export function AppShell() {
               {selection.kind === 'all' ? t('lists.all') : null}
               {selection.kind === 'ungrouped' ? t('lists.ungrouped') : null}
               {selection.kind === 'list' ? t('lists.title') : null}
+              {selection.kind === 'files' ? t('files.title') : null}
             </h1>
 
             <div className="relative ml-auto flex items-center">
@@ -205,17 +207,21 @@ export function AppShell() {
             {/* Keyed by selection so switching lists resets row expansion, but
               NOT by the create signal — remounting on every "new task" would
               collapse everything the user had open. */}
-            <TaskListView
-              key={`${selection.kind}-${selection.kind === 'list' ? selection.id : ''}`}
-              filter={filter}
-              compact={!isDesktop}
-              selectedTaskId={selectedTaskId}
-              onSelectTask={openTask}
-              activeListId={activeListId}
-              createSignal={newTaskNonce}
-              collapseSignal={collapseNonce}
-              onExpandedCountChange={setExpandedCount}
-            />
+            {selection.kind === 'files' ? (
+              <FilesView compact={!isDesktop} onOpenTask={openTask} />
+            ) : (
+              <TaskListView
+                key={`${selection.kind}-${selection.kind === 'list' ? selection.id : ''}`}
+                filter={filter}
+                compact={!isDesktop}
+                selectedTaskId={selectedTaskId}
+                onSelectTask={openTask}
+                activeListId={activeListId}
+                createSignal={newTaskNonce}
+                collapseSignal={collapseNonce}
+                onExpandedCountChange={setExpandedCount}
+              />
+            )}
           </main>
 
           {/* Bottom action bar: the primary action within thumb reach. */}

@@ -441,7 +441,26 @@ async function handleApi(request, response, url) {
     }
   }
 
+  /* Files view ----------------------------------------------------------- */
+  if (segments[0] === 'files' && segments.length === 1 && method === 'GET') {
+    if (attachmentService === null) throw noAttachments();
+    return sendJson(response, 200, { files: await attachmentService.listStoredFiles() });
+  }
+  if (segments[0] === 'files' && segments.length === 3 && method === 'DELETE') {
+    if (attachmentService === null) throw noAttachments();
+    const deleted = await attachmentService.removeOrphan(segments[1], segments[2]);
+    return sendJson(response, 200, { deleted });
+  }
+
   /* Attachment read URLs ------------------------------------------------- */
+  if (segments[0] === 'attachments' && segments[3] === 'download' && method === 'GET') {
+    if (attachmentService === null) throw noAttachments();
+    return sendJson(
+      response,
+      200,
+      await attachmentService.createDownloadGrant(segments[1], segments[2]),
+    );
+  }
   if (segments[0] === 'attachments' && segments[3] === 'url' && method === 'GET') {
     if (attachmentService === null) throw noAttachments();
     const grant = await attachmentService.createReadGrant(segments[1], segments[2], {

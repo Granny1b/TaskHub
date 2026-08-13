@@ -6,6 +6,7 @@ import {
   extensionOf,
   isAllowedExtension,
   isImageContentType,
+  parseAttachmentPath,
   removeAttachment,
   sanitizeFileName,
   thumbnailBlobPath,
@@ -146,5 +147,41 @@ describe('attaching to nodes', () => {
   it('is a safe no-op for an unknown id', () => {
     const node = addAttachment(mainTask(), attachment, ctx());
     expect(removeAttachment(node, 'nope', ctx()).attachments).toHaveLength(1);
+  });
+});
+
+describe('parseAttachmentPath', () => {
+  it('reads a blob path back into its parts', () => {
+    // This is what lets the files view be built from a blob listing alone:
+    // the path already says which task and which attachment the bytes are.
+    expect(parseAttachmentPath('01TASK/01ATT/ritning-4b.pdf')).toEqual({
+      taskId: '01TASK',
+      attachmentId: '01ATT',
+      fileName: 'ritning-4b.pdf',
+      isThumbnail: false,
+    });
+  });
+
+  it('recognises a thumbnail', () => {
+    // Thumbnails are storage we pay for but not files anyone uploaded, so the
+    // view has to be able to tell them apart from the real attachment.
+    expect(parseAttachmentPath('01TASK/01ATT/thumb.jpg')?.isThumbnail).toBe(true);
+  });
+
+  it('rejects anything not shaped like an attachment path', () => {
+    // A stray blob in the container must not be presented as somebody's file.
+    expect(parseAttachmentPath('loose-file.txt')).toBeNull();
+    expect(parseAttachmentPath('01TASK/01ATT')).toBeNull();
+    expect(parseAttachmentPath('01TASK/01ATT/nested/file.jpg')).toBeNull();
+    expect(parseAttachmentPath('01TASK//file.jpg')).toBeNull();
+    expect(parseAttachmentPath('')).toBeNull();
+  });
+
+  it('round-trips with attachmentBlobPath', () => {
+    const path = attachmentBlobPath('01TASK', '01ATT', 'Ritning Färdig.pdf');
+    const parsed = parseAttachmentPath(path);
+    expect(parsed?.taskId).toBe('01TASK');
+    expect(parsed?.attachmentId).toBe('01ATT');
+    expect(parsed?.fileName).toBe('Ritning-Fardig.pdf');
   });
 });

@@ -10,6 +10,7 @@ import type {
   BlobFacts,
   IAttachmentStorage,
   ReadGrant,
+  StoredBlob,
   UploadGrant,
 } from './IAttachmentStorage.js';
 
@@ -91,6 +92,47 @@ export class BlobAttachmentStorage implements IAttachmentStorage {
 
     const blobClient = this.container.getBlockBlobClient(blobPath);
     return { url: `${blobClient.url}?${sas}`, expiresOn: expiresOn.toISOString() };
+  }
+
+  async createDownloadGrant(blobPath: string, fileName: string): Promise<ReadGrant> {
+    const now = new Date();
+    const expiresOn = new Date(now.getTime() + READ_SAS_MINUTES * 60_000);
+
+    const sas = generateBlobSASQueryParameters(
+      {
+        containerName: this.container.containerName,
+        blobName: blobPath,
+        permissions: BlobSASPermissions.parse('r'),
+        startsOn: new Date(now.getTime() - CLOCK_SKEW_MINUTES * 60_000),
+        expiresOn,
+        protocol: this.protocol,
+        /*
+          The whole difference between viewing and downloading.
+
+          The filename is quoted and stripped of quotes and control characters
+          first: it goes into a response header, and an unescaped quote there
+          truncates the header rather than producing a clever filename.
+        */
+        contentDisposition: `attachment; filename="${fileName.replace(/["\\\r\n]/g, '')}"`,
+      },
+      this.credential,
+    ).toString();
+
+    const blobClient = this.container.getBlockBlobClient(blobPath);
+    return { url: `${blobClient.url}?${sas}`, expiresOn: expiresOn.toISOString() };
+  }
+
+  async listAll(): Promise<StoredBlob[]> {
+    const blobs: StoredBlob[] = [];
+    for await (const blob of this.container.listBlobsFlat()) {
+      blobs.push({
+        blobPath: blob.name,
+        sizeBytes: blob.properties.contentLength ?? 0,
+        contentType: blob.properties.contentType ?? 'application/octet-stream',
+        lastModified: (blob.properties.lastModified ?? new Date(0)).toISOString(),
+      });
+    }
+    return blobs;
   }
 
   async statBlob(blobPath: string): Promise<BlobFacts> {

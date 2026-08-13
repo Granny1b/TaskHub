@@ -35,6 +35,7 @@ export const queryKeys = {
   lists: ['lists'] as const,
   tasks: (filter: TaskFilter) => ['tasks', filter] as const,
   task: (id: string) => ['task', id] as const,
+  files: ['files'] as const,
 };
 
 /* -------------------------------------------------------------------------- */
@@ -706,6 +707,58 @@ export function useReorderLists() {
 
     onSuccess: (saved) => {
       cacheLists(client, saved.data.lists, saved.etag);
+    },
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Files                                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Every file in storage.
+ *
+ * One request that answers a question no per-task view can: what is actually
+ * stored, including files whose task has been deleted. Cheap on the server (one
+ * blob listing) but not free, and nothing about it changes second to second, so
+ * it is allowed to go stale for a minute.
+ */
+export function useFiles() {
+  return useQuery({
+    queryKey: queryKeys.files,
+    queryFn: () => api.listFiles(),
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * Delete a file for good.
+ *
+ * Two paths behind one hook, because the caller should not have to know which
+ * applies. A file a task still references goes through the conditional write
+ * that keeps the document honest; one nothing references has no document and no
+ * ETag, only bytes.
+ */
+export function useDeleteFile() {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ taskId, attachmentId }: { taskId: string; attachmentId: string }) => {
+      const cached = client.getQueryData<WithETag<TaskDocument>>(queryKeys.task(taskId));
+      const etag = cached?.etag ?? (await api.getTask(taskId).catch(() => null))?.etag ?? null;
+
+      if (etag === null) {
+        // No task to write — an orphan, or a task that has since been deleted.
+        await api.deleteOrphanFile(taskId, attachmentId);
+        return;
+      }
+      await api.deleteAttachment(taskId, attachmentId, etag);
+    },
+
+    onSuccess: (_result, variables) => {
+      void client.invalidateQueries({ queryKey: queryKeys.files });
+      void client.invalidateQueries({ queryKey: queryKeys.task(variables.taskId) });
+      invalidateTaskLists(client);
     },
   });
 }

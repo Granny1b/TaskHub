@@ -145,5 +145,23 @@
     "skipToContent": "Skip to task list",
     "collapsePanel": "Collapse the side panel",
     "expandPanel": "Expand the side panel"
+  },
+  "files": {
+    "title": "Files",
+    "search": "Search files",
+    "filterByType": "Filter by type",
+    "kind": {
+      "all": "All",
+      "image": "Images",
+      "document": "Documents",
+      "other": "Other"
+    },
+    "summary": "{{count}} files · {{size}}",
+    "ofTotal": "of {{count}} total",
+    "download": "Download",
+    "confirmDelete": "Delete permanently?",
+    "orphan": "No task – safe to delete",
+    "empty": "No files uploaded yet",
+    "noMatches": "No files match your search"
   }
 }

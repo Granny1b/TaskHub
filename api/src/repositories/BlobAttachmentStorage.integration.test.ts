@@ -290,7 +290,7 @@ describe('the grant is a real boundary, not a formality', () => {
 });
 
 describe('removing an attachment', () => {
-  it('detaches it from the document but keeps the bytes', async () => {
+  it('detaches it from the document and deletes the bytes', async () => {
     const task = await seedTask();
     const bytes = Buffer.alloc(512, 3);
 
@@ -323,9 +323,88 @@ describe('removing an attachment', () => {
 
     expect(removed.document.root.attachments).toHaveLength(0);
 
-    // Consistent with the soft-delete stance in §5: no v1 user action destroys
-    // bytes. The Phase-2 cleanup job collects unreferenced blobs.
+    /*
+      The bytes go too (ADR-0043).
+
+      This deliberately reverses the earlier soft-delete stance. The files view
+      exists so someone can reclaim storage, and an unlink that leaves the blob
+      behind reclaims nothing while appearing to. This assertion is the whole
+      feature: without it, "delete" is a label rather than a behaviour.
+    */
     const stillThere = await storage.statBlob(grant.blobPath);
-    expect(stillThere.exists).toBe(true);
+    expect(stillThere.exists).toBe(false);
+  });
+
+  it('deletes the thumbnail alongside the file it belongs to', async () => {
+    // Both live under `{taskId}/{attachmentId}/`, so one prefix delete covers
+    // the pair. A thumbnail left behind is storage nothing can ever reach.
+    const task = await seedTask('Med miniatyr');
+    const bytes = Buffer.alloc(256, 7);
+
+    const grant = await service.createUploadGrant(task.document.id, {
+      fileName: 'foto.jpg',
+      contentType: 'image/jpeg',
+      sizeBytes: bytes.length,
+    });
+    await putToSas(grant.uploadUrl, bytes, 'image/jpeg');
+
+    expect(grant.thumbnailUploadUrl).not.toBeNull();
+    await putToSas(grant.thumbnailUploadUrl as string, Buffer.alloc(64, 9), 'image/jpeg');
+
+    const committed = await service.commit(
+      task.document.id,
+      {
+        attachmentId: grant.attachmentId,
+        fileName: 'foto.jpg',
+        contentType: 'image/jpeg',
+        sizeBytes: bytes.length,
+        blobPath: grant.blobPath,
+        thumbnailPath: grant.thumbnailPath,
+      },
+      task.etag,
+      ctx(),
+    );
+
+    await service.remove(task.document.id, grant.attachmentId, committed.saved.etag, ctx());
+
+    expect((await storage.statBlob(grant.blobPath)).exists).toBe(false);
+    expect((await storage.statBlob(grant.thumbnailPath as string)).exists).toBe(false);
+  });
+
+  it('lists stored files without listing thumbnails as their own row', async () => {
+    // A thumbnail is a cost, not a file anyone uploaded; showing it as a row
+    // would double every photo in the view.
+    const task = await seedTask('För fillistan');
+    const bytes = Buffer.alloc(128, 5);
+
+    const grant = await service.createUploadGrant(task.document.id, {
+      fileName: 'bild.jpg',
+      contentType: 'image/jpeg',
+      sizeBytes: bytes.length,
+    });
+    await putToSas(grant.uploadUrl, bytes, 'image/jpeg');
+    await putToSas(grant.thumbnailUploadUrl as string, Buffer.alloc(32, 1), 'image/jpeg');
+
+    await service.commit(
+      task.document.id,
+      {
+        attachmentId: grant.attachmentId,
+        fileName: 'bild.jpg',
+        contentType: 'image/jpeg',
+        sizeBytes: bytes.length,
+        blobPath: grant.blobPath,
+        thumbnailPath: grant.thumbnailPath,
+      },
+      task.etag,
+      ctx(),
+    );
+
+    const files = await service.listStoredFiles();
+    const mine = files.filter((file) => file.attachmentId === grant.attachmentId);
+
+    expect(mine).toHaveLength(1);
+    expect(mine[0]?.fileName).toBe('bild.jpg');
+    expect(mine[0]?.taskTitle).toBe('För fillistan');
+    expect(mine[0]?.sizeBytes).toBe(bytes.length);
   });
 });

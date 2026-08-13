@@ -1313,3 +1313,72 @@ derived percent recompute — the source loses a child, the destination gains on
 
 **Rejected:** making the move a delete plus a create. It is simpler to write and
 loses the subtask's identity, its history and its attachments.
+
+---
+
+## ADR-0043 — The files view is built on the blob listing, and deleting means deleting
+
+**Status:** accepted · **Date:** 2026-08-13
+
+**Context.** Attachments could only be seen from inside the task they belonged
+to. Nothing in the app could answer "what is stored", which is the question
+behind both "clear out the photos I no longer need" and "why is storage the
+largest line in `docs/COSTS.md`".
+
+**Decision, part one: storage is the index.** `GET /api/files` is one blob
+listing joined against one task listing. The blob path convention from §5 —
+`{taskId}/{attachmentId}/{fileName}` — already carries which task and which
+attachment the bytes belong to, so `parseAttachmentPath` recovers the join key
+without opening a single task document.
+
+The alternative was to assemble the list from the task documents, which are the
+authority on attachments. At 500 tasks that is 500 blob reads to answer one
+question, against one paged listing. `ListBlobs` is billed at the write rate
+(~€0.05/10,000) and is still far cheaper than the reads it replaces.
+
+What this buys beyond cost: **size, type and date come from the blob itself**,
+not from a record that could disagree with it, and **files whose task is gone
+still appear**. A storage view that hid unreachable files would hide exactly the
+ones most worth deleting.
+
+Thumbnails are filtered out of the listing but counted in what storage holds.
+They are a cost, not a file anyone uploaded.
+
+**Decision, part two: delete removes the bytes.** This reverses the §5 stance
+that nothing a user does in v1 destroys bytes, and it does so on purpose. The
+view exists so someone can reclaim storage; an unlink that leaves the blob
+behind reclaims nothing while looking like it did. The old behaviour would have
+meant a growing pile of unreachable blobs that no user action could ever remove.
+
+Deletion is confirmed in the UI before it is called, and it is genuinely
+irreversible — there is no undo and no recovery path short of the storage
+account's own retention settings.
+
+The document is written first, then the bytes. If the blob delete fails the file
+is unreferenced but still stored, which shows up in this view as an orphan and
+can be deleted again. The other order would leave a document pointing at bytes
+that were already gone.
+
+**Two delete paths, one button.** A file a task still references goes through
+`DELETE /api/tasks/{id}/attachments/{attachmentId}`, which writes the document
+under an `If-Match` first. A file nothing references has no document and no
+ETag, so it goes through `DELETE /api/files/{taskId}/{attachmentId}`, which
+touches only bytes — and which refuses if a task does still claim the file, so
+it cannot be used to skip the conditional write. The client picks the path; the
+user sees one action.
+
+**Download is a SAS field, not a proxy.** `contentDisposition` on the grant
+comes back as a response header, so the browser saves the file under its own
+name instead of rendering a JPEG in a tab. A 20 MB download therefore never
+passes through a Function, which on the Free tier is the difference between free
+and metered.
+
+**Consequences.** The view is deliberately not filtered by the selected list: it
+is a storage view, not a task view, so it sits with "Alla uppgifter" and
+"Ogrupperade" rather than among the lists. It is never a drop target. Search
+covers filename and task title, because those are the two things people
+remember.
+
+**Rejected:** a separate index blob listing every attachment, in the style of
+`lists.json`. It duplicates what storage already knows, adds a second thing to
+keep in sync, and introduces a write-contention point on every upload.

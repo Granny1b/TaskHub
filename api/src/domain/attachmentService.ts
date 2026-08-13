@@ -7,12 +7,14 @@ import {
   findNode,
   isImageContentType,
   newAttachmentId,
+  parseAttachmentPath,
   removeAttachment,
   thumbnailBlobPath,
   updateNode,
   type Attachment,
   type DomainEvent,
   type MutationContext,
+  type StoredFile,
   type TaskDocument,
 } from '@taskhub/shared';
 import type { ETagged, ITaskRepository } from '../repositories/ITaskRepository.js';
@@ -206,12 +208,77 @@ export class AttachmentService {
     return { url: grant.url, expiresOn: grant.expiresOn, fileName: attachment.fileName };
   }
 
+  /** A read URL that saves the file under its own name rather than opening it. */
+  async createDownloadGrant(
+    taskId: string,
+    attachmentId: string,
+  ): Promise<{ url: string; expiresOn: string; fileName: string }> {
+    const task = await this.requireTask(taskId);
+
+    const attachment = findAttachment(task.document, attachmentId);
+    if (attachment === null) {
+      throw new DomainError('not_found', `No attachment ${attachmentId} on task ${taskId}`, {
+        taskId,
+        attachmentId,
+      });
+    }
+
+    const grant = await this.storage.createDownloadGrant(attachment.blobPath, attachment.fileName);
+    return { url: grant.url, expiresOn: grant.expiresOn, fileName: attachment.fileName };
+  }
+
   /**
-   * Remove an attachment from the document.
+   * Every file in storage, with the task it belongs to.
    *
-   * The blob itself is left in place, consistent with the soft-delete stance in
-   * §5: nothing a user does in v1 destroys bytes. The Phase-2 cleanup job
-   * collects blobs no document references.
+   * Built from one blob listing joined against one task listing, rather than by
+   * opening every task document. Both are already the cheapest calls in the
+   * API; the alternative is a read per task, which at 500 tasks is 500 reads to
+   * answer one question (ADR-0043).
+   *
+   * Storage is the authority on what exists and what it costs — size, type and
+   * date come from the blob itself, not from a record that could disagree with
+   * it. The task title is a join, and a file whose task has been deleted still
+   * appears, with no title. That is deliberate: a storage view that hid the
+   * files nobody can reach would hide exactly the ones worth deleting.
+   */
+  async listStoredFiles(): Promise<StoredFile[]> {
+    const [blobs, tasks] = await Promise.all([this.storage.listAll(), this.tasks.list({})]);
+    const titleById = new Map(tasks.map((task) => [task.id, task.title]));
+
+    const files: StoredFile[] = [];
+    for (const blob of blobs) {
+      const parsed = parseAttachmentPath(blob.blobPath);
+      // Thumbnails are storage we pay for but not files anyone uploaded. They
+      // are counted in the totals and never listed as their own row.
+      if (parsed === null || parsed.isThumbnail) continue;
+
+      files.push({
+        taskId: parsed.taskId,
+        attachmentId: parsed.attachmentId,
+        taskTitle: titleById.get(parsed.taskId) ?? null,
+        fileName: parsed.fileName,
+        contentType: blob.contentType,
+        sizeBytes: blob.sizeBytes,
+        uploadedAt: blob.lastModified,
+        blobPath: blob.blobPath,
+      });
+    }
+
+    return files.sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
+  }
+
+  /**
+   * Remove an attachment from its task *and* delete the bytes.
+   *
+   * This reverses the §5 stance that nothing a user does destroys bytes, and it
+   * does so deliberately: the files view exists so someone can reclaim storage,
+   * and an unlink that leaves the blob behind reclaims nothing while looking
+   * like it did (ADR-0043). The UI confirms before calling this.
+   *
+   * The document is written first. If the blob delete then fails the file is
+   * unreferenced but still stored — it shows up in the files view as an orphan
+   * and can be deleted again, which is a far better failure than a document
+   * pointing at bytes that are already gone.
    */
   async remove(
     taskId: string,
@@ -237,6 +304,21 @@ export class AttachmentService {
     );
 
     const saved = await this.tasks.replace({ ...task.document, root }, ifMatch);
+
+    /*
+      Then the bytes, file and thumbnail together.
+
+      `deletePrefix` on `{taskId}/{attachmentId}/` is exactly the pair — the
+      blob path convention (§5) puts nothing else under that prefix. Best
+      effort: the document write is the one that must succeed, and an orphaned
+      blob is visible in the files view rather than lost.
+    */
+    try {
+      await this.storage.deletePrefix(`${taskId}/${attachmentId}/`);
+    } catch {
+      // Left for the next attempt; the attachment is already unreferenced.
+    }
+
     this.publish({
       type: 'AttachmentRemoved',
       at: ctx.now,
@@ -245,6 +327,28 @@ export class AttachmentService {
       attachmentId,
     });
     return saved;
+  }
+
+  /**
+   * Delete a file that no task references any more.
+   *
+   * The files view can surface blobs whose task is gone, or whose attachment
+   * record was removed before deletion became real. Nothing owns them, so there
+   * is no document to write and no ETag to check — only bytes to remove.
+   */
+  async removeOrphan(taskId: string, attachmentId: string): Promise<number> {
+    // Refuse if a task still references it: that route has to go through
+    // `remove`, which writes the document under an If-Match first.
+    const task = await this.tasks.get(taskId);
+    if (task !== null && findAttachment(task.document, attachmentId) !== null) {
+      throw new DomainError(
+        'invalid_operation',
+        'That file is still attached to a task; delete it from the task instead',
+        { taskId, attachmentId },
+      );
+    }
+
+    return this.storage.deletePrefix(`${taskId}/${attachmentId}/`);
   }
 }
 

@@ -5,7 +5,14 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import type { TaskList } from '@taskhub/shared';
 import { IconButton } from '../../components/Button.js';
-import { GripIcon, InboxIcon, ListIcon, PlusIcon, TrashIcon } from '../../components/icons.js';
+import {
+  GripIcon,
+  InboxIcon,
+  ListIcon,
+  PaperclipIcon,
+  PlusIcon,
+  TrashIcon,
+} from '../../components/icons.js';
 import { Skeleton } from '../../components/Skeleton.js';
 import { dragDataOf, type DragItemData } from '../../lib/dragTypes.js';
 import {
@@ -19,7 +26,12 @@ import { AccountButton } from '../settings/AccountButton.js';
 import { ListColorPicker } from './ListColorPicker.js';
 import { listColorVar } from './listColors.js';
 
-export type ListSelection = { kind: 'all' } | { kind: 'ungrouped' } | { kind: 'list'; id: string };
+export type ListSelection =
+  | { kind: 'all' }
+  | { kind: 'ungrouped' }
+  | { kind: 'list'; id: string }
+  /** Everything stored, across every task — not a list of tasks (ADR-0043). */
+  | { kind: 'files' };
 
 interface LeftPanelProps {
   selection: ListSelection;
@@ -109,6 +121,16 @@ export function LeftPanel({
           active={selection.kind === 'ungrouped'}
           collapsed={collapsed}
           onClick={() => choose({ kind: 'ungrouped' })}
+        />
+        {/* Sits with the two always-there views rather than among the lists,
+            because it is not a list of tasks — it is what storage is holding.
+            Never a drop target: a task cannot be moved "into" it. */}
+        <PanelItem
+          icon={<PaperclipIcon className="h-4 w-4" />}
+          label={t('files.title')}
+          active={selection.kind === 'files'}
+          collapsed={collapsed}
+          onClick={() => choose({ kind: 'files' })}
         />
 
         {!collapsed ? (

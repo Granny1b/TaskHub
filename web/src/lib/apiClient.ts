@@ -1,4 +1,11 @@
-import type { Attachment, TaskDocument, TaskList, TaskNode, TaskSummary } from '@taskhub/shared';
+import type {
+  Attachment,
+  StoredFile,
+  TaskDocument,
+  TaskList,
+  TaskNode,
+  TaskSummary,
+} from '@taskhub/shared';
 
 /**
  * The HTTP client.
@@ -315,6 +322,31 @@ export const api = {
       method: 'DELETE',
       ifMatch,
     });
+  },
+
+  /** A URL that saves the file under its own name rather than opening it. */
+  async getAttachmentDownloadUrl(
+    taskId: string,
+    attachmentId: string,
+  ): Promise<{ url: string; expiresOn: string; fileName: string }> {
+    const { data } = await request<{ url: string; expiresOn: string; fileName: string }>(
+      `/attachments/${taskId}/${attachmentId}/download`,
+    );
+    return data;
+  },
+
+  /** Every file in storage, newest first. */
+  async listFiles(): Promise<StoredFile[]> {
+    const { data } = await request<{ files: StoredFile[] }>('/files');
+    return data.files;
+  },
+
+  /** Delete bytes no task references. Nothing to guard with an ETag. */
+  async deleteOrphanFile(taskId: string, attachmentId: string): Promise<number> {
+    const { data } = await request<{ deleted: number }>(`/files/${taskId}/${attachmentId}`, {
+      method: 'DELETE',
+    });
+    return data.deleted;
   },
 
   /* ---------------------------------------------------------------------- */
