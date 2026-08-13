@@ -80,8 +80,8 @@
     "nothingSelected": "Ingen bild kom tillbaka från kameran. Prova \"Lägg till filer\" och välj bilden därifrån.",
     "pickerInterrupted": "Telefonen stängde av sidan medan kameran var öppen, så bilden kom aldrig fram. Det beror på att minnet tog slut – stäng några flikar i webbläsaren, eller ta bilden i kamera-appen och lägg till den med \"Lägg till filer\".",
     "takePhoto": "Ta bilden",
-    "cameraDenied": "Kameran är blockerad för den här sidan. Tillåt kamera i webbläsarens inställningar, eller lägg till bilden som fil.",
-    "cameraMissing": "Ingen kamera hittades. Ta bilden i kamera-appen och lägg till den som fil."
+    "cameraDenied": "Kameran är blockerad. Kontrollera två saker: att webbläsaren själv får använda kameran (telefonens Inställningar → Appar → Brave → Behörigheter → Kamera), och att den här sidan får det (lås-ikonen till vänster om adressen → Behörigheter). Kommer ingen fråga alls är det oftast det första.",
+    "cameraMissing": "Ingen kamera kunde startas. Den kan vara upptagen av en annan app – stäng kamera-appen och försök igen, eller lägg till bilden som fil."
   },
   "conflict": {
     "banner": "Uppgiften ändrades medan du redigerade — granska ändringarna",
