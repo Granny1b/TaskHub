@@ -77,7 +77,8 @@
     "compressing": "Shrinking…",
     "confirmDelete": "Remove this attachment?",
     "noFilesInDrop": "Nothing you dropped was a file. Email cannot be dragged straight out of Outlook — save it first (File → Save As) and drop the .msg here.",
-    "nothingSelected": "No picture came back from the camera. Try \"Add files\" and pick it from there."
+    "nothingSelected": "No picture came back from the camera. Try \"Add files\" and pick it from there.",
+    "pickerInterrupted": "Your phone shut the page down while the camera was open, so the picture never arrived. That happens when memory runs out — close some browser tabs, or take the photo in the camera app and add it with \"Add files\"."
   },
   "conflict": {
     "banner": "This task changed while you were editing — review",

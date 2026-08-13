@@ -1,3 +1,5 @@
+import { readImageHeaderSize } from './imageHeader.js';
+
 /**
  * Decode an image straight to the size we need, never at full size.
  *
@@ -22,6 +24,13 @@
  */
 
 /**
+ * How large a file of unknown dimensions may be before a full decode is
+ * refused outright. Anything bigger is uploaded untouched rather than risking
+ * the allocation that kills the page.
+ */
+export const UNKNOWN_FORMAT_DECODE_LIMIT = 4 * 1024 * 1024;
+
+/**
  * Fit a size inside a square of `maxEdge`, preserving aspect ratio and never
  * enlarging. Enlarging would cost memory and quality for a photo that needed
  * neither.
@@ -44,33 +53,6 @@ export function scaleWithin(
 }
 
 /**
- * Intrinsic size, read from the file header rather than by decoding it.
- *
- * An `<img>` that is never inserted into the document parses the header for its
- * dimensions and defers the pixel decode, so this costs roughly the file size
- * rather than the bitmap size — which is the entire point.
- *
- * `naturalWidth`/`naturalHeight` already account for EXIF orientation in
- * current browsers, which is what keeps these numbers consistent with the
- * `imageOrientation: 'from-image'` decode below.
- */
-export async function readImageSize(file: Blob): Promise<{ width: number; height: number } | null> {
-  if (typeof Image !== 'function' || typeof URL.createObjectURL !== 'function') return null;
-
-  const url = URL.createObjectURL(file);
-  try {
-    return await new Promise<{ width: number; height: number } | null>((resolve) => {
-      const image = new Image();
-      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
-      image.onerror = () => resolve(null);
-      image.src = url;
-    });
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
-/**
  * Decode `file` so that its longest edge is at most `maxEdge`.
  *
  * Returns null rather than throwing for anything undecodable, so every caller's
@@ -79,16 +61,21 @@ export async function readImageSize(file: Blob): Promise<{ width: number; height
 export async function decodeScaled(file: Blob, maxEdge: number): Promise<ImageBitmap | null> {
   if (typeof createImageBitmap !== 'function') return null;
 
-  const size = await readImageSize(file);
+  const size = await readImageHeaderSize(file);
 
   /*
-    Without dimensions there is nothing safe to ask for: requesting a fixed
-    `resizeWidth` would upscale a small image, wasting both memory and quality
-    on a photo that needed neither. Fall back to a plain decode, which is what
-    the app did before and is fine for anything a header parse failed on —
-    those are small or exotic, not 50MP.
+    Without dimensions there is nothing safe to ask for: a fixed `resizeWidth`
+    would upscale a small image, costing more memory than leaving it alone.
+
+    A plain full-size decode is the only option left, and it is the one that
+    runs a phone out of memory — so it is allowed only for a file small enough
+    that it cannot. A 4 MB ceiling still decodes to at most a few hundred
+    megapixels of *compressed* input, but in practice bounds this to
+    screenshots and exotica rather than camera photographs, which is what the
+    parser already handles.
   */
   if (size === null || size.width <= 0 || size.height <= 0) {
+    if (file.size > UNKNOWN_FORMAT_DECODE_LIMIT) return null;
     try {
       return await createImageBitmap(file, { imageOrientation: 'from-image' });
     } catch {

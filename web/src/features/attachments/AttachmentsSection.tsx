@@ -1,10 +1,15 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { ALLOWED_EXTENSIONS, type Attachment } from '@taskhub/shared';
 import { Button } from '../../components/Button.js';
 import { PaperclipIcon, PlusIcon } from '../../components/icons.js';
 import { api } from '../../lib/apiClient.js';
+import {
+  clearPickerOpen,
+  consumePickerInterrupted,
+  markPickerOpen,
+} from '../../lib/pickerWatch.js';
 import { queryKeys } from '../../lib/queries.js';
 import { AttachmentGrid } from './AttachmentGrid.js';
 import { DropZone } from './DropZone.js';
@@ -56,6 +61,15 @@ export function AttachmentsSection({
    * phrased as what to do instead rather than as a failure.
    */
   const [dropHint, setDropHint] = useState(false);
+  /**
+   * True when the page was reloaded while a picker was open — the phone killed
+   * the tab to give the camera app memory, and the photo never arrived.
+   */
+  const [interrupted, setInterrupted] = useState(false);
+
+  useEffect(() => {
+    if (consumePickerInterrupted()) setInterrupted(true);
+  }, []);
 
   /**
    * Take what a picker handed back, and say so when it handed back nothing.
@@ -65,8 +79,10 @@ export function AttachmentsSection({
    * that produced "nothing happens when I take a photo".
    */
   const handleChosen = (files: FileList | null): void => {
+    clearPickerOpen();
     setDropHint(false);
     setRemoveError(null);
+    setInterrupted(false);
 
     const chosen = files === null ? [] : Array.from(files);
     if (chosen.length === 0) {
@@ -110,6 +126,15 @@ export function AttachmentsSection({
       ) : null}
 
       {/* The whole section is a drop target, and accepts pasted screenshots. */}
+      {interrupted ? (
+        <p
+          className="mb-2 rounded-md border border-border-subtle bg-surface-raised px-2.5 py-2 text-xs text-content-muted"
+          role="status"
+        >
+          {t('attachments.pickerInterrupted')}
+        </p>
+      ) : null}
+
       {dropHint ? (
         <p className="mb-2 text-xs text-content-muted" role="status">
           {t('attachments.noFilesInDrop')}
@@ -144,7 +169,10 @@ export function AttachmentsSection({
             size="sm"
             variant="secondary"
             className={compact ? 'h-11 flex-1' : ''}
-            onClick={() => fileInput.current?.click()}
+            onClick={() => {
+              markPickerOpen();
+              fileInput.current?.click();
+            }}
           >
             <PlusIcon className="h-4 w-4" />
             {t('attachments.add')}
@@ -157,7 +185,10 @@ export function AttachmentsSection({
               size="sm"
               variant="secondary"
               className="h-11 flex-1"
-              onClick={() => cameraInput.current?.click()}
+              onClick={() => {
+                markPickerOpen();
+                cameraInput.current?.click();
+              }}
             >
               {t('attachments.camera')}
             </Button>
