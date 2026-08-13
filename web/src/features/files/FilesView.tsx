@@ -7,7 +7,10 @@ import { PaperclipIcon, SearchIcon, TrashIcon } from '../../components/icons.js'
 import { Skeleton } from '../../components/Skeleton.js';
 import { api } from '../../lib/apiClient.js';
 import { useDeleteFile, useFiles } from '../../lib/queries.js';
+import { forgetAttachmentUrls } from '../attachments/attachmentUrls.js';
 import { formatBytes } from '../attachments/UploadList.js';
+import { FilePreview } from './FilePreview.js';
+import { FileThumbnail } from './FileThumbnail.js';
 
 /**
  * Everything stored, in one list.
@@ -69,6 +72,8 @@ export function FilesView({ compact, onOpenTask }: FilesViewProps) {
   const [kind, setKind] = useState<Kind>('all');
   const [confirming, setConfirming] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Index into `shown`, so the arrows walk the list the user is looking at. */
+  const [previewAt, setPreviewAt] = useState<number | null>(null);
 
   const all = useMemo(() => files.data ?? [], [files.data]);
   const shown = useMemo(
@@ -95,6 +100,11 @@ export function FilesView({ compact, onOpenTask }: FilesViewProps) {
     deleteFile.mutate(
       { taskId: file.taskId, attachmentId: file.attachmentId },
       {
+        onSuccess: () => {
+          // The bytes are gone, so a cached URL for them now resolves to a 404.
+          forgetAttachmentUrls(file.taskId, file.attachmentId);
+          setPreviewAt(null);
+        },
         onError: (cause) => setError(cause instanceof Error ? cause.message : t('common.error')),
       },
     );
@@ -189,14 +199,20 @@ export function FilesView({ compact, onOpenTask }: FilesViewProps) {
                 key={file.blobPath}
                 className="group flex items-center gap-3 border-b border-border-subtle px-3 py-2 hover:bg-surface-hover"
               >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-surface-sunken text-[10px] font-medium uppercase text-content-muted">
-                  {file.fileName.split('.').pop()?.slice(0, 4) ?? '?'}
-                </span>
+                <FileThumbnail file={file} />
 
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm text-content" title={file.fileName}>
+                  {/* The filename opens the file. Clicking what you are looking
+                      at is the obvious gesture, and it saves a separate
+                      "preview" control competing with download and delete. */}
+                  <button
+                    type="button"
+                    onClick={() => setPreviewAt(shown.indexOf(file))}
+                    className="block max-w-full truncate text-left text-sm text-content underline-offset-2 hover:underline"
+                    title={file.fileName}
+                  >
                     {file.fileName}
-                  </span>
+                  </button>
                   <span className="block truncate text-xs text-content-muted">
                     {file.taskTitle !== null ? (
                       <button
@@ -269,6 +285,17 @@ export function FilesView({ compact, onOpenTask }: FilesViewProps) {
           </ul>
         )}
       </div>
+
+      {previewAt !== null && shown[previewAt] !== undefined ? (
+        <FilePreview
+          files={shown}
+          index={previewAt}
+          onIndexChange={setPreviewAt}
+          onClose={() => setPreviewAt(null)}
+          onDownload={(file) => void download(file)}
+          onDelete={(file) => remove(file)}
+        />
+      ) : null}
     </div>
   );
 }

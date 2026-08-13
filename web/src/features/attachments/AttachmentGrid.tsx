@@ -3,38 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { isImageContentType, type Attachment } from '@taskhub/shared';
 import { Button, IconButton } from '../../components/Button.js';
 import { PaperclipIcon, TrashIcon } from '../../components/icons.js';
-import { api } from '../../lib/apiClient.js';
+import { resolveAttachmentUrl } from './attachmentUrls.js';
 import { formatBytes } from './UploadList.js';
-
-/**
- * Read URLs are short-lived (15 minutes) and fetched on demand, so the cache is
- * process-local and expiry-aware. Containers are never public; every view of an
- * attachment goes through a fresh grant.
- *
- * A module-level Map rather than React state because these are shared across
- * every grid and thumbnail on the page, and re-fetching a URL per component
- * would multiply the requests for no benefit.
- */
-const urlCache = new Map<string, { url: string; expiresAt: number }>();
-
-/** Refresh a minute early rather than serving a URL that expires mid-request. */
-const EXPIRY_MARGIN_MS = 60_000;
-
-async function resolveUrl(
-  taskId: string,
-  attachmentId: string,
-  thumbnail: boolean,
-): Promise<string> {
-  const key = `${taskId}/${attachmentId}/${thumbnail ? 'thumb' : 'full'}`;
-  const cached = urlCache.get(key);
-  if (cached !== undefined && cached.expiresAt - EXPIRY_MARGIN_MS > Date.now()) {
-    return cached.url;
-  }
-
-  const grant = await api.getAttachmentUrl(taskId, attachmentId, { thumbnail });
-  urlCache.set(key, { url: grant.url, expiresAt: Date.parse(grant.expiresOn) });
-  return grant.url;
-}
 
 interface AttachmentGridProps {
   taskId: string;
@@ -178,7 +148,7 @@ function AttachmentPreview({ taskId, attachment }: { taskId: string; attachment:
     if (!hasThumbnail) return;
     let cancelled = false;
 
-    void resolveUrl(taskId, attachment.id, true)
+    void resolveAttachmentUrl(taskId, attachment.id, true)
       .then((url) => {
         if (!cancelled) setThumbUrl(url);
       })
@@ -193,7 +163,7 @@ function AttachmentPreview({ taskId, attachment }: { taskId: string; attachment:
   }, [taskId, attachment.id, hasThumbnail]);
 
   const open = async (): Promise<void> => {
-    const url = await resolveUrl(taskId, attachment.id, false);
+    const url = await resolveAttachmentUrl(taskId, attachment.id, false);
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 

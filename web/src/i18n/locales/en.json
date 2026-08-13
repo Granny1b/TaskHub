@@ -163,6 +163,9 @@
     "confirmDelete": "Delete permanently?",
     "orphan": "No task – safe to delete",
     "empty": "No files uploaded yet",
-    "noMatches": "No files match your search"
+    "noMatches": "No files match your search",
+    "previous": "Previous file",
+    "next": "Next file",
+    "noPreview": "This file type cannot be shown here"
   }
 }

@@ -163,6 +163,9 @@
     "confirmDelete": "Radera permanent?",
     "orphan": "Ingen uppgift – kan raderas",
     "empty": "Inga filer uppladdade än",
-    "noMatches": "Inga filer matchar sökningen"
+    "noMatches": "Inga filer matchar sökningen",
+    "previous": "Föregående fil",
+    "next": "Nästa fil",
+    "noPreview": "Den här filtypen kan inte visas här"
   }
 }
