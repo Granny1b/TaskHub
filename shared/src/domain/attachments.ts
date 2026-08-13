@@ -35,6 +35,14 @@ export const ALLOWED_EXTENSIONS = [
   'pptx',
   'txt',
   'csv',
+  /*
+    Saved mail. Dragging a message straight out of Outlook cannot work — it is
+    not a file on disk, so the browser is handed OLE descriptors and no file
+    (see `classifyDrop`). Saving it first and attaching the result is the only
+    route there is, and it was previously rejected on arrival.
+  */
+  'msg',
+  'eml',
   'dxf',
   'dwg',
   'step',

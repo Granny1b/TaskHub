@@ -50,6 +50,12 @@ export function AttachmentsSection({
   const fileInput = useRef<HTMLInputElement>(null);
   const cameraInput = useRef<HTMLInputElement>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
+  /**
+   * Shown when a drop carried nothing the browser will hand over — in practice,
+   * a mail dragged out of Outlook. It is not an error in this app, so it is
+   * phrased as what to do instead rather than as a failure.
+   */
+  const [dropHint, setDropHint] = useState(false);
 
   const remove = async (attachmentId: string): Promise<void> => {
     setRemoveError(null);
@@ -85,7 +91,20 @@ export function AttachmentsSection({
       ) : null}
 
       {/* The whole section is a drop target, and accepts pasted screenshots. */}
-      <DropZone onFiles={(files) => upload(files)} acceptPaste>
+      {dropHint ? (
+        <p className="mb-2 text-xs text-content-muted" role="status">
+          {t('attachments.noFilesInDrop')}
+        </p>
+      ) : null}
+
+      <DropZone
+        onFiles={(files) => {
+          setDropHint(false);
+          upload(files);
+        }}
+        onNothingUsable={() => setDropHint(true)}
+        acceptPaste
+      >
         {attachments.length > 0 ? (
           <AttachmentGrid
             taskId={taskId}

@@ -73,7 +73,8 @@
     "openFile": "Öppna",
     "noThumbnail": "Ingen förhandsvisning",
     "compressing": "Krymper…",
-    "confirmDelete": "Ta bort bilagan?"
+    "confirmDelete": "Ta bort bilagan?",
+    "noFilesInDrop": "Inget av det du släppte var en fil. E-post kan inte dras direkt från Outlook – spara den först (Arkiv → Spara som) och släpp .msg-filen här."
   },
   "conflict": {
     "banner": "Uppgiften ändrades medan du redigerade — granska ändringarna",
