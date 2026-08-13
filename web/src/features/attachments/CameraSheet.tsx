@@ -26,8 +26,24 @@ import { CloseIcon } from '../../components/icons.js';
  * compression, without ever building the enormous one first.
  */
 
-/** Matches the compression target, so nothing is captured only to be thrown away. */
-const IDEAL_EDGE = 2560;
+/**
+ * How large a stream to ask for.
+ *
+ * Not the compression target. Asking for 2560 made the camera allocate its
+ * largest buffers on the device least able to afford them, and on the phone
+ * this was written for that was enough to have the whole tab destroyed — the
+ * browser restored it seconds later, which is what "Förhandsgranskning"
+ * flashing in the address bar was.
+ *
+ * 1920 is a native mode on essentially every phone camera, so it is delivered
+ * without scaling, and it is far more detail than a photograph of a machine
+ * fault needs. `deviceMemory` is coarse and often absent, but where it does
+ * report a small number it is worth believing.
+ */
+function idealEdge(): number {
+  const memory = (navigator as { deviceMemory?: number }).deviceMemory;
+  return typeof memory === 'number' && memory <= 4 ? 1280 : 1920;
+}
 
 interface CameraSheetProps {
   onCapture: (file: File) => void;
@@ -47,18 +63,17 @@ type Status = 'starting' | 'live' | 'denied' | 'unavailable';
  * wrong resolution beats a correct request that never opens. The last is the
  * least a browser can be asked for.
  */
-const ATTEMPTS: readonly MediaStreamConstraints[] = [
-  {
-    video: {
-      facingMode: { ideal: 'environment' },
-      width: { ideal: IDEAL_EDGE },
-      height: { ideal: IDEAL_EDGE },
+function attempts(): readonly MediaStreamConstraints[] {
+  const edge = idealEdge();
+  return [
+    {
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: edge } },
+      audio: false,
     },
-    audio: false,
-  },
-  { video: { facingMode: { ideal: 'environment' } }, audio: false },
-  { video: true, audio: false },
-];
+    { video: { facingMode: { ideal: 'environment' } }, audio: false },
+    { video: true, audio: false },
+  ];
+}
 
 export function CameraSheet({ onCapture, onClose, onFallback }: CameraSheetProps) {
   const { t } = useTranslation();
@@ -115,7 +130,7 @@ export function CameraSheet({ onCapture, onClose, onFallback }: CameraSheetProps
       let stream: MediaStream | null = null;
       let lastError: unknown = null;
 
-      for (const constraints of ATTEMPTS) {
+      for (const constraints of attempts()) {
         try {
           stream = await navigator.mediaDevices.getUserMedia(constraints);
           break;

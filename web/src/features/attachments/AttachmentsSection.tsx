@@ -145,8 +145,14 @@ export function AttachmentsSection({
 
       {cameraOpen ? (
         <CameraSheet
-          onCapture={(file) => upload([file])}
-          onClose={() => setCameraOpen(false)}
+          onCapture={(file) => {
+            clearPickerOpen();
+            upload([file]);
+          }}
+          onClose={() => {
+            clearPickerOpen();
+            setCameraOpen(false);
+          }}
           onFallback={() => {
             // No camera to offer. Send them to the picker that works rather
             // than leaving them looking at an apology.
@@ -202,6 +208,13 @@ export function AttachmentsSection({
               variant="secondary"
               className="h-11 flex-1"
               onClick={() => {
+                /*
+                  Marked exactly like a file picker, because the same thing can
+                  happen: opening a camera stream is enough for the phone to
+                  destroy this tab, and without the marker the page comes back
+                  with no idea it ever tried.
+                */
+                markPickerOpen();
                 setInterrupted(false);
                 setCameraOpen(true);
               }}
