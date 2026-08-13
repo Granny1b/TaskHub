@@ -8,6 +8,7 @@ import {
 } from '@taskhub/shared';
 import { api } from '../../lib/apiClient.js';
 import { compressImage } from '../../lib/imageCompression.js';
+import { normaliseIncomingFile } from '../../lib/incomingFile.js';
 import { readPreferences } from '../../lib/preferences.js';
 import { queryKeys } from '../../lib/queries.js';
 import { generateThumbnail } from '../../lib/thumbnails.js';
@@ -112,7 +113,7 @@ export function useUploads(taskId: string) {
    * started from may be stale — and the commit is a conditional write.
    */
   const uploadOne = useCallback(
-    async (original: File, nodeId?: string): Promise<void> => {
+    async (incoming: File, nodeId?: string): Promise<void> => {
       const id = nextUploadId();
       const controller = new AbortController();
       controllers.current.set(id, controller);
@@ -121,8 +122,8 @@ export function useUploads(taskId: string) {
         ...current,
         {
           id,
-          fileName: original.name,
-          sizeBytes: original.size,
+          fileName: incoming.name,
+          sizeBytes: incoming.size,
           status: 'preparing',
           percent: 0,
         },
@@ -130,7 +131,17 @@ export function useUploads(taskId: string) {
 
       try {
         /*
-          Compression comes first, before validation and before the grant.
+          Before anything else, make the file fit to upload.
+
+          A photo straight from a camera can arrive with no extension or an
+          empty MIME type, and both break this pipeline further down — the
+          allowlist checks the extension, and the SAS is signed with the content
+          type Azure then compares against the PUT. See incomingFile.ts.
+        */
+        const original = await normaliseIncomingFile(incoming);
+
+        /*
+          Compression comes next, before validation and before the grant.
 
           The SAS is signed for one blob path, derived from the filename, and
           the commit checks the real uploaded size against what was declared —
