@@ -42,11 +42,17 @@ export const COLUMNS: readonly ColumnDefinition[] = [
    */
   { id: 'drag', labelKey: null, defaultWidth: 20, minWidth: 20, resizable: false },
   { id: 'expand', labelKey: null, defaultWidth: 28, minWidth: 28, resizable: false },
+  /**
+   * Wide enough for its own heading, which 36px was not: "KLAR" renders at
+   * 38px including the cell padding, so the label arrived as "KL…" — a
+   * truncated four-letter word, which reads as a rendering fault rather than
+   * as an abbreviation. 48px clears both "KLAR" and "DONE" with room over.
+   */
   {
     id: 'complete',
     labelKey: 'columns.complete',
-    defaultWidth: 36,
-    minWidth: 36,
+    defaultWidth: 48,
+    minWidth: 48,
     resizable: false,
   },
   { id: 'date', labelKey: 'columns.date', defaultWidth: 108, minWidth: 90, resizable: true },

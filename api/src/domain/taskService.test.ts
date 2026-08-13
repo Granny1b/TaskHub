@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  DomainError,
   EventBus,
   createContext,
   getPercent,
@@ -552,5 +553,107 @@ describe('TaskService', () => {
       await expect(bare.create({ title: 'X' }, ctx())).resolves.toBeDefined();
       expect(spy).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('TaskService.moveChildToTask', () => {
+  let repository: InMemoryTaskRepository;
+  let events: DomainEvent[];
+  let service: TaskService;
+
+  beforeEach(() => {
+    repository = new InMemoryTaskRepository();
+    events = [];
+    const bus = new EventBus();
+    bus.subscribe((event) => events.push(event));
+    service = new TaskService(repository, bus);
+  });
+
+  /** Two tasks, the first carrying one subtask. */
+  const twoTasks = async () => {
+    const source = await service.create({ title: 'Byt växellåda' }, ctx());
+    const destination = await service.create({ title: 'Kontrollera spindel' }, ctx());
+    const { saved, child } = await service.addChild(
+      source.document.id,
+      { title: 'Provkör' },
+      source.etag,
+      ctx(),
+    );
+    return { sourceId: source.document.id, destinationId: destination.document.id, saved, child };
+  };
+
+  it('moves the subtask across, keeping its id', async () => {
+    const { sourceId, destinationId, saved, child } = await twoTasks();
+
+    const { from, to } = await service.moveChildToTask(
+      sourceId,
+      child.id,
+      destinationId,
+      saved.etag,
+      ctx(),
+    );
+
+    expect(from.document.root.children).toHaveLength(0);
+    expect(to.document.root.children).toHaveLength(1);
+    expect(to.document.root.children[0]?.id).toBe(child.id);
+    expect(to.document.root.children[0]?.title).toBe('Provkör');
+  });
+
+  it('emits SubtaskMoved naming both tasks', async () => {
+    const { sourceId, destinationId, saved, child } = await twoTasks();
+    events.length = 0;
+
+    await service.moveChildToTask(sourceId, child.id, destinationId, saved.etag, ctx());
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: 'SubtaskMoved',
+        taskId: sourceId,
+        toTaskId: destinationId,
+        childId: child.id,
+      }),
+    ]);
+  });
+
+  it('refuses a move to the task it is already in', async () => {
+    const { sourceId, saved, child } = await twoTasks();
+
+    await expect(
+      service.moveChildToTask(sourceId, child.id, sourceId, saved.etag, ctx()),
+    ).rejects.toThrow(DomainError);
+  });
+
+  it('refuses a subtask that is not in the source task', async () => {
+    const { sourceId, destinationId, saved } = await twoTasks();
+
+    await expect(
+      service.moveChildToTask(sourceId, 'no-such-child', destinationId, saved.etag, ctx()),
+    ).rejects.toThrow(DomainError);
+  });
+
+  it('rejects a stale source ETag and leaves the subtask in exactly one place', async () => {
+    const { sourceId, destinationId, saved, child } = await twoTasks();
+
+    // Somebody else edits the source, so the caller's ETag is now stale.
+    await service.patch(
+      sourceId,
+      { node: { title: 'Byt växellåda (brådskande)' } },
+      saved.etag,
+      ctx(),
+    );
+
+    await expect(
+      service.moveChildToTask(sourceId, child.id, destinationId, saved.etag, ctx()),
+    ).rejects.toThrow(DomainError);
+
+    /*
+      This is the assertion the whole ordering exists for. The graft to the
+      destination happened before the source write failed, so without the
+      compensating rollback the subtask would now be in both tasks.
+    */
+    const source = await service.get(sourceId);
+    const destination = await service.get(destinationId);
+    expect(source.document.root.children).toHaveLength(1);
+    expect(destination.document.root.children).toHaveLength(0);
   });
 });

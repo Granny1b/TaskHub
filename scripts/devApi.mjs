@@ -390,6 +390,24 @@ async function handleApi(request, response, url) {
       const result = await tasks.removeChild(id, segments[3], requireIfMatch(request), context());
       return sendJson(response, 200, result.document, result.etag);
     }
+    // Move a subtask to another main task. Returns the source, like the real
+    // handler — the destination is refetched by the client (ADR-0042).
+    if (
+      segments[2] === 'children' &&
+      segments[4] === 'move' &&
+      segments.length === 5 &&
+      method === 'POST'
+    ) {
+      const body = await readBody(request);
+      const result = await tasks.moveChildToTask(
+        id,
+        segments[3],
+        body.toTaskId,
+        requireIfMatch(request),
+        context(),
+      );
+      return sendJson(response, 200, result.from.document, result.from.etag);
+    }
     if (segments[2] === 'attachments' && segments[3] === 'sas' && method === 'POST') {
       if (attachmentService === null) throw noAttachments();
       const body = await readBody(request);

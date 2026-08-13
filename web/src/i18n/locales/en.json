@@ -111,7 +111,8 @@
     "over": "Moving to {{name}}.",
     "dropped": "Dropped {{name}} in its new position.",
     "cancelled": "Cancelled moving {{name}}.",
-    "intoList": "Moving into the list {{name}}."
+    "intoList": "Moving into the list {{name}}.",
+    "intoTask": "Moving into the task {{name}}."
   },
   "settings": {
     "title": "Settings",

@@ -224,6 +224,26 @@ export const api = {
   },
 
   /**
+   * Move a subtask to a different main task.
+   *
+   * Returns the *source* document: that is the one the If-Match guarded and the
+   * one whose new ETag the caller needs next. The destination's new version
+   * comes back through cache invalidation.
+   */
+  async moveChildToTask(
+    id: string,
+    childId: string,
+    toTaskId: string,
+    ifMatch: string,
+  ): Promise<WithETag<TaskDocument>> {
+    return request<TaskDocument>(`/tasks/${id}/children/${childId}/move`, {
+      method: 'POST',
+      body: { toTaskId },
+      ifMatch,
+    });
+  },
+
+  /**
    * Move a main task in the manual order.
    *
    * `afterId` rather than an index, because the list on screen is usually a

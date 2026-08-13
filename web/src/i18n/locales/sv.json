@@ -111,7 +111,8 @@
     "over": "Flyttas till {{name}}.",
     "dropped": "{{name}} släpptes på sin nya plats.",
     "cancelled": "Flytten av {{name}} avbröts.",
-    "intoList": "Flyttas till listan {{name}}."
+    "intoList": "Flyttas till listan {{name}}.",
+    "intoTask": "Flyttas till uppgiften {{name}}."
   },
   "settings": {
     "title": "Inställningar",

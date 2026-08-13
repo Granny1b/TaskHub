@@ -2,7 +2,7 @@ import { completionKindForDepth } from '../config/completionPolicy.js';
 import { DEEPEST_TASK_DEPTH } from './constants.js';
 import { createCompletion, recomputeDerivedPercent } from './completion.js';
 import type { MutationContext } from './context.js';
-import { depthExceeded, notFound } from './errors.js';
+import { depthExceeded, invalidOperation, notFound } from './errors.js';
 import { newTaskId } from './ids.js';
 import { nextOrder, reorderSiblings, sortByOrder } from './ordering.js';
 import type { TaskNode } from './schemas.js';
@@ -171,6 +171,92 @@ export function addChild(
   // The parent's own derived percent must react to gaining a child. updateNode
   // recomputes ancestors, but not the node the updater itself returned.
   return { root: recomputeAt(nextRoot, parentId, ctx), child };
+}
+
+/** How many levels sit below this node. A leaf is 0. */
+export function subtreeHeight(node: TaskNode): number {
+  return node.children.length === 0
+    ? 0
+    : 1 + Math.max(...node.children.map((child) => subtreeHeight(child)));
+}
+
+/**
+ * Insert an *existing* node, and everything under it, under `parentId`.
+ *
+ * The counterpart to `addChild`, which builds a new node from a title. This one
+ * takes a node that already exists somewhere else and adopts it whole — its id,
+ * its percent, its completion state, its attachments and its own children all
+ * travel with it. That is the point: a subtask dragged to another main task is
+ * the same subtask, not a copy of its title.
+ *
+ * Nothing here removes the node from wherever it came from. Grafting and
+ * removing are separate steps because, when the two ends live in different
+ * aggregates, they are two separate conditional writes — see `moveChildToTask`.
+ */
+export function graftNode(
+  root: TaskNode,
+  parentId: string,
+  node: TaskNode,
+  ctx: MutationContext,
+): TaskNode {
+  const location = findNode(root, parentId);
+  if (location === null) {
+    throw notFound(`No node with id ${parentId} in this task`, { nodeId: parentId });
+  }
+
+  if (findNode(root, node.id) !== null) {
+    throw invalidOperation(`Node ${node.id} is already in this task`, { nodeId: node.id });
+  }
+
+  /*
+    The whole subtree has to fit, not just its top node.
+
+    `addChild` only ever adds a leaf, so it can compare one depth. A graft can
+    carry children with it, so the deepest leaf is what has to clear the cap.
+  */
+  const deepest = location.depth + 1 + subtreeHeight(node);
+  if (deepest > DEEPEST_TASK_DEPTH) {
+    throw depthExceeded(
+      `Cannot nest deeper than ${DEEPEST_TASK_DEPTH + 1} levels (attempted depth ${deepest})`,
+      { parentId, attemptedDepth: deepest, maxDepth: DEEPEST_TASK_DEPTH },
+    );
+  }
+
+  /*
+    Completion shape is chosen by depth (`completionKindForDepth`), so a node
+    that lands at a different depth than it left would be carrying the wrong
+    kind — a derived percent where a manual one belongs, or the reverse.
+
+    Today every subtask is depth 1 and moves to depth 1, so this never fires.
+    It is here so that raising MAX_TASK_DEPTH cannot silently corrupt a document
+    instead of failing loudly.
+  */
+  const arrivingDepth = location.depth + 1;
+  if (completionKindForDepth(arrivingDepth) !== node.completion.kind) {
+    throw invalidOperation(
+      `A node whose completion is "${node.completion.kind}" cannot move to depth ${arrivingDepth}`,
+      { nodeId: node.id, arrivingDepth, completionKind: node.completion.kind },
+    );
+  }
+
+  // Last among its new siblings, and stamped as touched — it did just move.
+  const adopted: TaskNode = {
+    ...node,
+    order: nextOrder(location.node.children),
+    updatedAt: ctx.now,
+    updatedBy: ctx.actor,
+  };
+
+  const nextRoot = updateNode(
+    root,
+    parentId,
+    (parent) => ({ ...parent, children: [...parent.children, adopted] }),
+    ctx,
+  );
+
+  // The new parent's derived percent must react to gaining a child, exactly as
+  // in `addChild`: updateNode recomputes ancestors, not the updated node itself.
+  return recomputeAt(nextRoot, parentId, ctx);
 }
 
 /** Remove a node and everything under it. The root itself cannot be removed. */

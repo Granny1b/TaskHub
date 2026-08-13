@@ -203,6 +203,44 @@ interface ReorderChildrenVariables {
   toIndex: number;
 }
 
+interface MoveChildVariables {
+  /** The task the subtask is leaving. */
+  id: string;
+  childId: string;
+  toTaskId: string;
+  /** The source task's ETag — the version the user was looking at. */
+  etag: string;
+}
+
+/**
+ * Move a subtask to a different main task.
+ *
+ * Deliberately *not* optimistic, unlike every other drag in the app.
+ *
+ * The others rewrite one cached document and can put it back on failure. This
+ * one changes two, and the destination's document may not even be in the cache
+ * — a collapsed row has never been opened. Predicting a two-blob write that the
+ * server performs in two steps, and that can legitimately end with the subtask
+ * in neither place or both, would mean showing a result the server has not
+ * agreed to yet. The row is dropped, the request goes, both tasks refetch.
+ */
+export function useMoveChildToTask() {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, childId, toTaskId, etag }: MoveChildVariables) =>
+      api.moveChildToTask(id, childId, toTaskId, etag),
+
+    onSuccess: (saved, variables) => {
+      // The source comes back from the call; the destination has to be refetched
+      // because the server wrote it separately and did not return it.
+      cacheTask(client, saved);
+      void client.invalidateQueries({ queryKey: queryKeys.task(variables.toTaskId) });
+      invalidateTaskLists(client);
+    },
+  });
+}
+
 interface ReorderTasksVariables {
   movedId: string;
   /** The task the moved one now sits below. `null` means the top of the list. */

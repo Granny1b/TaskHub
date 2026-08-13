@@ -1249,3 +1249,67 @@ storage — there is simply no button that puts it back. A failed delete now
 surfaces its message and refetches the task, because the usual cause is a stale
 ETag and the previous code discarded the rejection silently, which is
 indistinguishable from a tap that never registered.
+
+---
+
+## ADR-0042 — Moving a subtask between main tasks writes the destination first
+
+**Status:** accepted · **Date:** 2026-08-13
+
+**Context.** A subtask can now be dragged onto a different main task's row. Every
+other drag in the app rewrites one blob. This one rewrites two — the subtask
+leaves one aggregate and joins another — and there is no transaction across two
+blobs in Blob Storage.
+
+**Decision.** Graft into the destination first, then remove from the source.
+
+The order is chosen entirely by what a half-finished move leaves behind:
+
+| Order              | If the second write fails        |
+| ------------------ | -------------------------------- |
+| graft, then remove | the subtask is in **both** tasks |
+| remove, then graft | the subtask is in **neither**    |
+
+A visible duplicate someone can delete beats a subtask that has quietly stopped
+existing. So the graft goes first, and if the removal then fails the graft is
+undone; only if that compensation _also_ fails does the caller get an error, and
+that error names both tasks and says the subtask is duplicated rather than
+offering a generic failure.
+
+**Both writes are conditional.** The caller's `If-Match` guards the source — it
+is the version the user was looking at. The destination is guarded by the ETag
+read moments earlier in the same call, which is what stops the move landing on
+top of somebody else's concurrent edit. A test proves the stale-ETag case ends
+with the subtask in exactly one place.
+
+**`graftNode` is not `addChild`.** `addChild` builds a new node from a title;
+`graftNode` adopts an existing one whole — id, percent, tick, attachments and
+its own children all travel with it. A move that produced a new subtask with the
+same title would lose the photographs attached to it, which in this app is the
+evidence.
+
+Two guards that `addChild` does not need:
+
+- **The whole subtree is measured against the depth cap**, not just its top
+  node. `addChild` only ever adds a leaf and can compare one depth; a graft can
+  carry children.
+- **Completion shape is checked against the arriving depth.** Completion is
+  chosen by depth, so a node landing at a different depth than it left would
+  carry the wrong kind — a derived percent where a manual one belongs. Today
+  every subtask moves from depth 1 to depth 1 and this never fires; it exists so
+  that raising `MAX_TASK_DEPTH` fails loudly instead of corrupting a document.
+
+**The client mutation is deliberately not optimistic**, unlike every other drag
+here. The others rewrite one cached document and can put it back on failure.
+This one changes two, and the destination may not even be in the cache — a
+collapsed row has never been opened. Predicting a two-step server write that can
+legitimately end in either place would mean showing a result the server has not
+agreed to yet.
+
+**Consequences.** The subtask lands last among its new siblings; there is no
+position to specify in the request, so placing it is a second drag. Both tasks'
+derived percent recompute — the source loses a child, the destination gains one.
+`SubtaskMoved` is the only event that names two aggregates.
+
+**Rejected:** making the move a delete plus a create. It is simpler to write and
+loses the subtask's identity, its history and its attachments.

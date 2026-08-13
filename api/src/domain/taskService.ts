@@ -4,6 +4,7 @@ import {
   addChild,
   createTaskDocument,
   findNode,
+  graftNode,
   indexAfter,
   isTaskComplete,
   nextOrder,
@@ -238,6 +239,94 @@ export class TaskService {
       childId,
     });
     return saved;
+  }
+
+  /**
+   * Move a subtask out of one main task and into another.
+   *
+   * This is the only operation in the app that writes two aggregates, and there
+   * is no transaction across two blobs. So the order is chosen by what a
+   * half-finished move leaves behind:
+   *
+   *   graft first, then remove  — a failure leaves the subtask in *both* places
+   *   remove first, then graft  — a failure leaves it in *neither*
+   *
+   * A visible duplicate someone can delete beats a subtask that quietly no
+   * longer exists, so the graft goes first. If the removal then fails, the
+   * graft is undone; if that compensation also fails, the caller is told
+   * exactly what is duplicated rather than being handed a generic error.
+   *
+   * Both writes are conditional. `ifMatch` guards the source — it is the
+   * version the user was looking at. The destination is guarded by the ETag
+   * read here, moments before writing, which is what stops the move landing on
+   * top of somebody else's concurrent edit.
+   */
+  async moveChildToTask(
+    fromTaskId: string,
+    childId: string,
+    toTaskId: string,
+    ifMatch: string,
+    ctx: MutationContext,
+  ): Promise<{ from: ETagged<TaskDocument>; to: ETagged<TaskDocument> }> {
+    if (fromTaskId === toTaskId) {
+      throw new DomainError('invalid_operation', 'A subtask is already in that task', {
+        taskId: toTaskId,
+      });
+    }
+
+    const source = await this.get(fromTaskId);
+    const located = findNode(source.document.root, childId);
+    if (located === null) {
+      throw new DomainError('not_found', `No node with id ${childId} in this task`, {
+        taskId: fromTaskId,
+        nodeId: childId,
+      });
+    }
+
+    const destination = await this.get(toTaskId);
+    const to = await this.repository.replace(
+      {
+        ...destination.document,
+        root: graftNode(destination.document.root, destination.document.root.id, located.node, ctx),
+      },
+      destination.etag,
+    );
+
+    let from: ETagged<TaskDocument>;
+    try {
+      from = await this.repository.replace(
+        { ...source.document, root: removeNode(source.document.root, childId, ctx) },
+        ifMatch,
+      );
+    } catch (error) {
+      // The subtask is currently in both tasks. Put the destination back.
+      try {
+        const planted = await this.get(toTaskId);
+        await this.repository.replace(
+          { ...planted.document, root: removeNode(planted.document.root, childId, ctx) },
+          planted.etag,
+        );
+      } catch {
+        throw new DomainError(
+          'invalid_operation',
+          `The subtask was copied to ${toTaskId} but could not be removed from ${fromTaskId}, ` +
+            `and the copy could not be undone. It now exists in both tasks.`,
+          { fromTaskId, toTaskId, childId, duplicated: true },
+        );
+      }
+      throw error;
+    }
+
+    this.publish({
+      type: 'SubtaskMoved',
+      at: ctx.now,
+      actor: ctx.actor,
+      taskId: fromTaskId,
+      childId,
+      toTaskId,
+    });
+
+    return { from, to };
   }
 
   async reorder(
