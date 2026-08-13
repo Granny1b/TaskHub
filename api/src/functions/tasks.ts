@@ -4,6 +4,7 @@ import { TaskService } from '../domain/taskService.js';
 import {
   addChildRequestSchema,
   createTaskRequestSchema,
+  moveChildRequestSchema,
   patchNodeRequestSchema,
   patchTaskRequestSchema,
   reorderRequestSchema,
@@ -185,6 +186,36 @@ app.http('removeChild', {
 
     const saved = await service().removeChild(id, childId, ifMatch, mutation);
     return ok(saved.document, saved.etag);
+  }),
+});
+
+/**
+ * Move a subtask to a different main task.
+ *
+ * The only endpoint that writes two blobs. It returns the *source* document,
+ * because that is the one the caller's `If-Match` guarded and the one whose new
+ * ETag they need; the destination's new version arrives via the cache
+ * invalidation the client does anyway. See ADR-0042 for the ordering and what
+ * a half-finished move leaves behind.
+ */
+app.http('moveChild', {
+  methods: ['POST'],
+  authLevel: 'anonymous',
+  route: 'tasks/{id}/children/{childId}/move',
+  handler: withAuth(async ({ request, mutation }) => {
+    const id = requireId(request);
+    const childId = requireChildId(request);
+    const ifMatch = requireIfMatch(request);
+    const input = await readJson(request, moveChildRequestSchema);
+
+    const { from } = await service().moveChildToTask(
+      id,
+      childId,
+      input.toTaskId,
+      ifMatch,
+      mutation,
+    );
+    return ok(from.document, from.etag);
   }),
 });
 

@@ -90,3 +90,50 @@ app.http('deleteAttachment', {
     return ok(saved.document, saved.etag);
   }),
 });
+
+/**
+ * Every file in storage.
+ *
+ * Deliberately not scoped to a task: the whole point of the files view is to
+ * see what is being paid for across the account, including files whose task has
+ * been deleted. One blob listing plus one task listing (ADR-0043).
+ */
+app.http('listFiles', {
+  methods: ['GET'],
+  authLevel: 'anonymous',
+  route: 'files',
+  handler: withAuth(async () => ok({ files: await service().listStoredFiles() })),
+});
+
+/** A URL that saves the file rather than opening it in a tab. */
+app.http('getAttachmentDownloadUrl', {
+  methods: ['GET'],
+  authLevel: 'anonymous',
+  route: 'attachments/{taskId}/{attachmentId}/download',
+  handler: withAuth(async ({ request }) => {
+    const taskId = requireParam(request, 'taskId');
+    const attachmentId = requireParam(request, 'attachmentId');
+
+    return ok(await service().createDownloadGrant(taskId, attachmentId));
+  }),
+});
+
+/**
+ * Delete bytes that no task references.
+ *
+ * Separate from `deleteAttachment` because there is no document to write and no
+ * ETag to check — only bytes. The service refuses if a task still claims the
+ * file, so this cannot be used to bypass the conditional write.
+ */
+app.http('deleteOrphanFile', {
+  methods: ['DELETE'],
+  authLevel: 'anonymous',
+  route: 'files/{taskId}/{attachmentId}',
+  handler: withAuth(async ({ request }) => {
+    const taskId = requireParam(request, 'taskId');
+    const attachmentId = requireParam(request, 'attachmentId');
+
+    const deleted = await service().removeOrphan(taskId, attachmentId);
+    return ok({ deleted });
+  }),
+});

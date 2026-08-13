@@ -20,6 +20,7 @@ import type { TaskFilter } from '../../lib/apiClient.js';
 import { dragDataOf, type DragItemData } from '../../lib/dragTypes.js';
 import {
   useLists,
+  useMoveChildToTask,
   useMoveTaskToList,
   useReorderChildren,
   useReorderLists,
@@ -44,6 +45,7 @@ interface DragSurfaceProps {
  *   task  → task   reorder the main list
  *   task  → list   move the task into that list (or out of all of them)
  *   child → child  reorder subtasks within their parent
+ *   child → task   move the subtask to that main task (ADR-0042)
  *   list  → list   reorder the side panel
  *
  * Anything else is refused. The regions below keep their own `SortableContext`
@@ -62,6 +64,7 @@ export function DragSurface({ filter, children }: DragSurfaceProps) {
   const reorderChildren = useReorderChildren();
   const reorderLists = useReorderLists();
   const moveTask = useMoveTaskToList();
+  const moveChild = useMoveChildToTask();
 
   const [activeType, setActiveType] = useState<DragItemData['type'] | null>(null);
 
@@ -128,6 +131,19 @@ export function DragSurface({ filter, children }: DragSurfaceProps) {
       return;
     }
 
+    // A subtask dropped on a different main task's row — it changes parent and
+    // keeps everything else: its percent, its tick, its attachments.
+    if (activeData.type === 'child' && overData.type === 'task') {
+      if (overId === activeData.taskId) return;
+      moveChild.mutate({
+        id: activeData.taskId,
+        childId: movedId,
+        toTaskId: overId,
+        etag: activeData.etag,
+      });
+      return;
+    }
+
     if (activeData.type === 'child' && overData.type === 'child') {
       const toIndex = activeData.siblingIds.indexOf(overId);
       if (toIndex === -1) return;
@@ -172,6 +188,12 @@ export function DragSurface({ filter, children }: DragSurfaceProps) {
           return t('dnd.intoList', {
             name: overData.listId === null ? t('lists.ungrouped') : nameOf(over.id),
           });
+        }
+        // Same reasoning one level down: "over Provkör" and "into Byt växellåda"
+        // are different outcomes, and reordering among siblings looks identical
+        // to changing parent unless the announcement says which is which.
+        if (activeData?.type === 'child' && overData?.type === 'task') {
+          return t('dnd.intoTask', { name: nameOf(over.id) });
         }
         return t('dnd.over', { name: nameOf(over.id) });
       },

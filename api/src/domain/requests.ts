@@ -139,3 +139,16 @@ export const attachmentCommitRequestSchema = z.object({
   nodeId: ulidSchema.optional(),
 });
 export type AttachmentCommitRequest = z.infer<typeof attachmentCommitRequestSchema>;
+
+/**
+ * Move a subtask to a different main task.
+ *
+ * Only the destination is in the body: the source task and the subtask are
+ * already in the route, and the `If-Match` guards the source. The subtask keeps
+ * its identity and lands last among its new siblings, so there is no position
+ * to specify — drag it again afterwards to place it.
+ */
+export const moveChildRequestSchema = z.object({
+  toTaskId: ulidSchema,
+});
+export type MoveChildRequest = z.infer<typeof moveChildRequestSchema>;

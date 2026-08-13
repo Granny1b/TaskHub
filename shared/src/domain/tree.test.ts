@@ -13,9 +13,11 @@ import {
   countNodes,
   createTaskNode,
   findNode,
+  graftNode,
   orderedChildren,
   removeNode,
   reorderChildren,
+  subtreeHeight,
   totalAttachmentCount,
   updateNode,
   visitNodes,
@@ -253,5 +255,108 @@ describe('attachment counting', () => {
     });
 
     expect(totalAttachmentCount(root)).toBe(3);
+  });
+});
+
+describe('graftNode', () => {
+  it('adopts a node whole, keeping its identity and everything on it', () => {
+    // The point of a move: the subtask that arrives is the same subtask, not a
+    // new one built from its title.
+    const moved = subtask({
+      title: 'Provkör',
+      completion: { kind: 'checkbox', isComplete: true },
+      completedDate: '2026-08-11',
+      attachments: [
+        {
+          id: '01JZZZZZZZZZZZZZZZZZZZZZZZ',
+          fileName: 'slitage.jpg',
+          contentType: 'image/jpeg',
+          sizeBytes: 1024,
+          blobPath: 'task/att/slitage.jpg',
+          thumbnailPath: null,
+          uploadedAt: '2026-08-11T09:00:00.000Z',
+          uploadedBy: 'test-user-object-id',
+        },
+      ],
+    });
+    const destination = taskWithChildren(2);
+
+    const grafted = graftNode(destination, destination.id, moved, ctx());
+    const landed = findNode(grafted, moved.id);
+
+    expect(landed).not.toBeNull();
+    expect(landed?.node.id).toBe(moved.id);
+    expect(landed?.node.title).toBe('Provkör');
+    expect(landed?.node.completion).toEqual({ kind: 'checkbox', isComplete: true });
+    expect(landed?.node.completedDate).toBe('2026-08-11');
+    expect(landed?.node.attachments).toHaveLength(1);
+  });
+
+  it('places the arrival last among its new siblings', () => {
+    const destination = taskWithChildren(3);
+    const moved = subtask({ title: 'Sist' });
+
+    const grafted = graftNode(destination, destination.id, moved, ctx());
+    const titles = orderedChildren(grafted).map((child) => child.title);
+
+    expect(titles.at(-1)).toBe('Sist');
+  });
+
+  it('makes the new parent recompute its own percent', () => {
+    // Two of two done is 100%; adopting a third, unfinished, must drop it.
+    // The fixture builds children directly, so the parent's derived percent has
+    // to be computed once before it means anything.
+    const destination = recomputeDerivedPercent(taskWithChildren(2, 2), ctx());
+    expect(getPercent(destination)).toBe(100);
+
+    const grafted = graftNode(destination, destination.id, subtask({ title: 'Ny' }), ctx());
+    expect(getPercent(grafted)).toBeCloseTo(67, 0);
+  });
+
+  it('stamps the moved node as touched', () => {
+    // It did just change parent, so the audit fields have to say so — otherwise
+    // the move is invisible to anything that watches updatedAt.
+    const moved = subtask({ updatedAt: '2020-01-01T00:00:00.000Z', updatedBy: 'someone-else' });
+    const destination = mainTask();
+    const context = ctx();
+
+    const grafted = graftNode(destination, destination.id, moved, context);
+    const landed = findNode(grafted, moved.id);
+
+    expect(landed?.node.updatedAt).toBe(context.now);
+    expect(landed?.node.updatedBy).toBe(context.actor);
+  });
+
+  it('refuses a node that is already in this task', () => {
+    // Otherwise the same id would appear twice and `findNode` would answer for
+    // whichever copy it reached first.
+    const existing = subtask({ title: 'Redan här' });
+    const destination = mainTask({ children: [existing] });
+
+    expect(() => graftNode(destination, destination.id, existing, ctx())).toThrow(DomainError);
+  });
+
+  it('refuses a parent that does not exist', () => {
+    expect(() => graftNode(mainTask(), 'no-such-node', subtask(), ctx())).toThrow(DomainError);
+  });
+
+  it('measures the whole subtree against the depth cap, not just its top node', () => {
+    // A leaf would fit where a node carrying children does not, which is the
+    // difference between this and addChild.
+    const carrier = subtask({ children: [subtask({ title: 'Barnbarn' })] });
+    const destination = mainTask();
+
+    expect(() => graftNode(destination, destination.id, carrier, ctx())).toThrow(DomainError);
+  });
+});
+
+describe('subtreeHeight', () => {
+  it('is zero for a leaf', () => {
+    expect(subtreeHeight(subtask())).toBe(0);
+  });
+
+  it('counts the levels below the node', () => {
+    expect(subtreeHeight(taskWithChildren(3))).toBe(1);
+    expect(subtreeHeight(mainTask({ children: [subtask({ children: [subtask()] })] }))).toBe(2);
   });
 });

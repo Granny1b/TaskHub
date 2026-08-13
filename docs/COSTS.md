@@ -206,6 +206,11 @@ Two honest caveats on that number:
 
 The single cheapest cost-control decision in the whole project is _not polling_.
 
+The files view (ADR-0043) adds one `ListBlobs` per visit, billed at the write
+rate. At even 50 visits a month that is 50 operations against the ~4,000 already
+in the write line — invisible. Built the other way, from the task documents, the
+same 50 visits would be 25,000 reads.
+
 ### 3.1 Client-side image compression, and what it does to the growth rate
 
 The arithmetic above prices a **2 GB stated baseline** growing by ~150 MB/month

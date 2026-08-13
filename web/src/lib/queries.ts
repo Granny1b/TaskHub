@@ -35,6 +35,7 @@ export const queryKeys = {
   lists: ['lists'] as const,
   tasks: (filter: TaskFilter) => ['tasks', filter] as const,
   task: (id: string) => ['task', id] as const,
+  files: ['files'] as const,
 };
 
 /* -------------------------------------------------------------------------- */
@@ -201,6 +202,44 @@ interface ReorderChildrenVariables {
   etag: string;
   movedId: string;
   toIndex: number;
+}
+
+interface MoveChildVariables {
+  /** The task the subtask is leaving. */
+  id: string;
+  childId: string;
+  toTaskId: string;
+  /** The source task's ETag — the version the user was looking at. */
+  etag: string;
+}
+
+/**
+ * Move a subtask to a different main task.
+ *
+ * Deliberately *not* optimistic, unlike every other drag in the app.
+ *
+ * The others rewrite one cached document and can put it back on failure. This
+ * one changes two, and the destination's document may not even be in the cache
+ * — a collapsed row has never been opened. Predicting a two-blob write that the
+ * server performs in two steps, and that can legitimately end with the subtask
+ * in neither place or both, would mean showing a result the server has not
+ * agreed to yet. The row is dropped, the request goes, both tasks refetch.
+ */
+export function useMoveChildToTask() {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, childId, toTaskId, etag }: MoveChildVariables) =>
+      api.moveChildToTask(id, childId, toTaskId, etag),
+
+    onSuccess: (saved, variables) => {
+      // The source comes back from the call; the destination has to be refetched
+      // because the server wrote it separately and did not return it.
+      cacheTask(client, saved);
+      void client.invalidateQueries({ queryKey: queryKeys.task(variables.toTaskId) });
+      invalidateTaskLists(client);
+    },
+  });
 }
 
 interface ReorderTasksVariables {
@@ -668,6 +707,58 @@ export function useReorderLists() {
 
     onSuccess: (saved) => {
       cacheLists(client, saved.data.lists, saved.etag);
+    },
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Files                                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Every file in storage.
+ *
+ * One request that answers a question no per-task view can: what is actually
+ * stored, including files whose task has been deleted. Cheap on the server (one
+ * blob listing) but not free, and nothing about it changes second to second, so
+ * it is allowed to go stale for a minute.
+ */
+export function useFiles() {
+  return useQuery({
+    queryKey: queryKeys.files,
+    queryFn: () => api.listFiles(),
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * Delete a file for good.
+ *
+ * Two paths behind one hook, because the caller should not have to know which
+ * applies. A file a task still references goes through the conditional write
+ * that keeps the document honest; one nothing references has no document and no
+ * ETag, only bytes.
+ */
+export function useDeleteFile() {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ taskId, attachmentId }: { taskId: string; attachmentId: string }) => {
+      const cached = client.getQueryData<WithETag<TaskDocument>>(queryKeys.task(taskId));
+      const etag = cached?.etag ?? (await api.getTask(taskId).catch(() => null))?.etag ?? null;
+
+      if (etag === null) {
+        // No task to write — an orphan, or a task that has since been deleted.
+        await api.deleteOrphanFile(taskId, attachmentId);
+        return;
+      }
+      await api.deleteAttachment(taskId, attachmentId, etag);
+    },
+
+    onSuccess: (_result, variables) => {
+      void client.invalidateQueries({ queryKey: queryKeys.files });
+      void client.invalidateQueries({ queryKey: queryKeys.task(variables.taskId) });
+      invalidateTaskLists(client);
     },
   });
 }

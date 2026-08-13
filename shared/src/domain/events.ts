@@ -24,6 +24,16 @@ export type DomainEvent =
   | ({ readonly type: 'SubtaskAdded'; readonly childId: string } & DomainEventBase)
   | ({ readonly type: 'SubtaskUpdated'; readonly childId: string } & DomainEventBase)
   | ({ readonly type: 'SubtaskRemoved'; readonly childId: string } & DomainEventBase)
+  /**
+   * A subtask changed parent. `taskId` is where it came from, `toTaskId` where
+   * it went — the only event that names two aggregates, because it is the only
+   * operation that writes two (ADR-0042).
+   */
+  | ({
+      readonly type: 'SubtaskMoved';
+      readonly childId: string;
+      readonly toTaskId: string;
+    } & DomainEventBase)
   | ({ readonly type: 'SubtaskCompleted'; readonly childId: string } & DomainEventBase)
   | ({ readonly type: 'SubtaskReopened'; readonly childId: string } & DomainEventBase)
   | ({ readonly type: 'ChildrenReordered'; readonly parentId: string } & DomainEventBase)

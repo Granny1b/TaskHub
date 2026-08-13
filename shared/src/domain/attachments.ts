@@ -110,6 +110,63 @@ export function thumbnailBlobPath(taskId: string, attachmentId: string): string 
   return `${taskId}/${attachmentId}/thumb.jpg`;
 }
 
+export interface ParsedAttachmentPath {
+  readonly taskId: string;
+  readonly attachmentId: string;
+  readonly fileName: string;
+  readonly isThumbnail: boolean;
+}
+
+/**
+ * Read a blob path back into its parts.
+ *
+ * The inverse of `attachmentBlobPath`, and the reason the files view can be
+ * built from a blob listing alone: the path already carries which task and
+ * which attachment the bytes belong to, so a listing answers questions that
+ * would otherwise need every task document opened.
+ *
+ * Returns null for anything that is not shaped like an attachment path, which
+ * keeps a stray blob in the container from being presented as a file.
+ */
+export function parseAttachmentPath(blobPath: string): ParsedAttachmentPath | null {
+  const segments = blobPath.split('/');
+  if (segments.length !== 3) return null;
+
+  const [taskId, attachmentId, fileName] = segments;
+  if (
+    taskId === undefined ||
+    attachmentId === undefined ||
+    fileName === undefined ||
+    taskId.length === 0 ||
+    attachmentId.length === 0 ||
+    fileName.length === 0
+  ) {
+    return null;
+  }
+
+  return { taskId, attachmentId, fileName, isThumbnail: fileName === 'thumb.jpg' };
+}
+
+/**
+ * A file as the storage view sees it.
+ *
+ * Not an `Attachment`: that is a record inside a task document. This is what
+ * storage actually holds, joined to the task it belongs to — which is the only
+ * way to answer "what am I paying to keep" and to see files whose task is gone.
+ */
+export interface StoredFile {
+  readonly taskId: string;
+  readonly attachmentId: string;
+  /** Null when no task claims it any more — an orphan, and safe to delete. */
+  readonly taskTitle: string | null;
+  readonly fileName: string;
+  readonly contentType: string;
+  readonly sizeBytes: number;
+  /** Storage's own timestamp, in ISO 8601. */
+  readonly uploadedAt: string;
+  readonly blobPath: string;
+}
+
 /**
  * Validate an upload request before a SAS is issued.
  *

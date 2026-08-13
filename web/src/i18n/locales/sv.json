@@ -111,7 +111,8 @@
     "over": "Flyttas till {{name}}.",
     "dropped": "{{name}} släpptes på sin nya plats.",
     "cancelled": "Flytten av {{name}} avbröts.",
-    "intoList": "Flyttas till listan {{name}}."
+    "intoList": "Flyttas till listan {{name}}.",
+    "intoTask": "Flyttas till uppgiften {{name}}."
   },
   "settings": {
     "title": "Inställningar",
@@ -144,5 +145,23 @@
     "skipToContent": "Hoppa till uppgiftslistan",
     "collapsePanel": "Fäll ihop sidopanelen",
     "expandPanel": "Fäll ut sidopanelen"
+  },
+  "files": {
+    "title": "Filer",
+    "search": "Sök filer",
+    "filterByType": "Filtrera på typ",
+    "kind": {
+      "all": "Alla",
+      "image": "Bilder",
+      "document": "Dokument",
+      "other": "Övrigt"
+    },
+    "summary": "{{count}} filer · {{size}}",
+    "ofTotal": "av {{count}} totalt",
+    "download": "Ladda ner",
+    "confirmDelete": "Radera permanent?",
+    "orphan": "Ingen uppgift – kan raderas",
+    "empty": "Inga filer uppladdade än",
+    "noMatches": "Inga filer matchar sökningen"
   }
 }
