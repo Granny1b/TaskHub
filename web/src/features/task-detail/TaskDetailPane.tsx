@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { countChildren, isTaskComplete, orderedChildren, type TaskNode } from '@taskhub/shared';
 import { Button, IconButton } from '../../components/Button.js';
@@ -5,6 +6,7 @@ import { Checkbox } from '../../components/Checkbox.js';
 import { CloseIcon, PaperclipIcon, PlusIcon } from '../../components/icons.js';
 import { Skeleton } from '../../components/Skeleton.js';
 import { InlineDate, InlineText } from '../task-list/InlineEdit.js';
+import { NewSubtaskInput } from '../task-list/NewSubtaskInput.js';
 import { PercentControl } from '../task-list/PercentControl.js';
 import { useAddChild, useDeleteTask, usePatchNode, useTask } from '../../lib/queries.js';
 import { AttachmentsSection } from '../attachments/AttachmentsSection.js';
@@ -30,6 +32,7 @@ export function TaskDetailPane({ taskId, onClose, asRoute }: TaskDetailPaneProps
   const patch = usePatchNode();
   const addChild = useAddChild();
   const deleteTask = useDeleteTask();
+  const [addingChild, setAddingChild] = useState(false);
 
   if (query.isLoading) {
     return (
@@ -145,23 +148,37 @@ export function TaskDetailPane({ taskId, onClose, asRoute }: TaskDetailPaneProps
                 </span>
               ) : null}
             </h2>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                const title = window.prompt(t('task.titlePlaceholder') ?? '');
-                if (title !== null && title.trim().length > 0) {
-                  addChild.mutate({ id: taskId, etag, title: title.trim() });
-                }
-              }}
-            >
+            <Button size="sm" variant="ghost" onClick={() => setAddingChild(true)}>
               <PlusIcon className="h-4 w-4" />
               {t('task.newSubtask')}
             </Button>
           </div>
 
+          {/*
+            The same input the list uses, rather than the `window.prompt` that
+            used to be here. A prompt is unstyled, ignores Escape on some
+            platforms, and several mobile browsers suppress it outright — which
+            made this button do nothing at all on the surface that needs it
+            most, since the phone list has no + of its own.
+          */}
+          {addingChild ? (
+            <div className="mb-2">
+              <NewSubtaskInput
+                onCancel={() => setAddingChild(false)}
+                onCreate={(title) => {
+                  addChild.mutate({ id: taskId, etag, title });
+                  setAddingChild(false);
+                }}
+              />
+            </div>
+          ) : null}
+
           {children.length === 0 ? (
-            <p className="text-sm text-content-muted">{t('empty.noResults')}</p>
+            // No "nothing here" line while the input is open — it is answering
+            // the question the empty state was asking.
+            addingChild ? null : (
+              <p className="text-sm text-content-muted">{t('empty.noResults')}</p>
+            )
           ) : (
             <ul className="divide-y divide-border-subtle rounded-md border border-border-subtle">
               {children.map((child) => (

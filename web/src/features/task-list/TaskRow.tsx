@@ -16,8 +16,43 @@ import { ChevronRightIcon, GripIcon, PaperclipIcon, PlusIcon } from '../../compo
 import type { DragItemData } from '../../lib/dragTypes.js';
 import type { PatchNode } from '../../lib/apiClient.js';
 import { InlineDate, InlineText } from './InlineEdit.js';
+import { NewSubtaskInput } from './NewSubtaskInput.js';
 import { PercentControl } from './PercentControl.js';
 import { SwipeRow } from './SwipeRow.js';
+
+/**
+ * Which subtask controls a row shows, given its state.
+ *
+ * Extracted because the desktop grid and the phone card used to decide this
+ * separately and disagreed: the phone offered "+ Ny deluppgift" whenever a row
+ * was open, the desktop only while the row had no subtasks at all. So the
+ * button people learned on an empty task vanished the moment they used it, and
+ * a task that already had subtasks never offered it. One rule now, read by
+ * both.
+ */
+export function subtaskAffordances(state: {
+  hasChildren: boolean;
+  expanded: boolean;
+  addingChild: boolean;
+}): { chevron: boolean; addButton: boolean } {
+  return {
+    /*
+      A row with no subtasks has nothing to expand, so it gets no chevron —
+      until something expands it anyway, which the + button does. Without the
+      second clause that row is stranded: open, empty, and with no control on
+      it that closes it again.
+    */
+    chevron: state.hasChildren || state.expanded,
+
+    /*
+      Always at the foot of an open row, exactly like "+ Ny uppgift" at the
+      foot of the list. Deliberately not conditioned on the subtasks having
+      loaded: `children` is empty until the aggregate arrives, so a count-based
+      rule made the button flash in and out as a row opened.
+    */
+    addButton: state.expanded && !state.addingChild,
+  };
+}
 
 export interface RowCallbacks {
   onPatch: (nodeId: string | undefined, patch: PatchNode) => void;
@@ -97,6 +132,15 @@ export function TaskRow({
 }: TaskRowProps) {
   const { t } = useTranslation();
   const [addingChild, setAddingChild] = useState(false);
+  /*
+    "Pressing + is what opened this row."
+
+    So that cancelling can put it back. Without this, pressing + on a task with
+    no subtasks and then thinking better of it left the row expanded and empty
+    — and because a childless row had no chevron, nothing on it could close it
+    again short of collapse-all.
+  */
+  const [openedToAdd, setOpenedToAdd] = useState(false);
   // "The user clicked Kommentarer and is waiting for the full text."
   const [commentsRequested, setCommentsRequested] = useState(false);
 
@@ -116,8 +160,24 @@ export function TaskRow({
       onSelect();
       return;
     }
-    if (!expanded) onToggleExpand();
+    if (!expanded) {
+      onToggleExpand();
+      setOpenedToAdd(true);
+    }
     setAddingChild(true);
+  };
+  const cancelAdd = (): void => {
+    setAddingChild(false);
+    if (openedToAdd) {
+      onToggleExpand();
+      setOpenedToAdd(false);
+    }
+  };
+  const commitAdd = (childTitle: string): void => {
+    onAddChild(childTitle);
+    setAddingChild(false);
+    // The row stays open on purpose: there is now a subtask in it to see.
+    setOpenedToAdd(false);
   };
 
   // Prefer the loaded aggregate; fall back to the listing projection. The
@@ -137,6 +197,8 @@ export function TaskRow({
   const hasChildren = childCount > 0;
 
   const children = root !== undefined ? orderedChildren(root) : [];
+
+  const affordances = subtaskAffordances({ hasChildren, expanded, addingChild });
 
   /*
     Mobile is a different layout, not a narrower one.
@@ -210,7 +272,7 @@ export function TaskRow({
               </span>
             </button>
 
-            {hasChildren ? (
+            {affordances.chevron ? (
               <button
                 type="button"
                 aria-label={inlineSubtasks ? t('columns.expand') : t('task.openDetails')}
@@ -251,15 +313,14 @@ export function TaskRow({
             </SortableContext>
 
             {addingChild ? (
-              <NewSubtaskRow
-                compact
-                onCancel={() => setAddingChild(false)}
-                onCreate={(childTitle) => {
-                  onAddChild(childTitle);
-                  setAddingChild(false);
-                }}
+              <NewSubtaskInput
+                className="px-2 py-1 pl-6"
+                onCancel={cancelAdd}
+                onCreate={commitAdd}
               />
-            ) : (
+            ) : null}
+
+            {affordances.addButton ? (
               <button
                 type="button"
                 onClick={() => setAddingChild(true)}
@@ -267,7 +328,7 @@ export function TaskRow({
               >
                 + {t('task.newSubtask')}
               </button>
-            )}
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -293,9 +354,9 @@ export function TaskRow({
           {dragHandle}
         </div>
 
-        {/* Expand — only on tasks that actually have subtasks. */}
+        {/* Expand — on tasks that have subtasks, and on one that + has opened. */}
         <div className="flex justify-center">
-          {hasChildren ? (
+          {affordances.chevron ? (
             <button
               type="button"
               aria-label={inlineSubtasks ? t('columns.expand') : t('task.openDetails')}
@@ -492,17 +553,14 @@ export function TaskRow({
           </SortableContext>
 
           {addingChild ? (
-            <NewSubtaskRow
-              compact={compact}
-              onCancel={() => setAddingChild(false)}
-              onCreate={(childTitle) => {
-                onAddChild(childTitle);
-                setAddingChild(false);
-              }}
+            <NewSubtaskInput
+              className="px-2 py-1 pl-[9.5rem]"
+              onCancel={cancelAdd}
+              onCreate={commitAdd}
             />
           ) : null}
 
-          {children.length === 0 && !addingChild ? (
+          {affordances.addButton ? (
             <button
               type="button"
               onClick={() => setAddingChild(true)}
@@ -750,51 +808,17 @@ function SubtaskRow({
             {node.attachments.length}
           </span>
         ) : null}
-        <span className="opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100">
+        {/* `group-hover/row`, not `group-hover`: the nearest group here is this
+            row, and it is a *named* one. Plain `group-hover` looks for an
+            unnamed `.group` ancestor, of which a subtask has none — so this
+            button stayed at opacity 0 however you hovered it, and the only way
+            to delete a subtask was the detail pane. */}
+        <span className="opacity-0 transition-opacity duration-150 group-hover/row:opacity-100 focus-within:opacity-100">
           <IconButton label={t('task.delete')} onClick={onRemove}>
             <span aria-hidden>×</span>
           </IconButton>
         </span>
       </div>
-    </div>
-  );
-}
-
-function NewSubtaskRow({
-  compact,
-  onCreate,
-  onCancel,
-}: {
-  compact: boolean;
-  onCreate: (title: string) => void;
-  onCancel: () => void;
-}) {
-  const { t } = useTranslation();
-  const [value, setValue] = useState('');
-
-  return (
-    <div className={`px-2 py-1 ${compact ? 'pl-6' : 'pl-[9.5rem]'}`}>
-      <input
-        autoFocus
-        value={value}
-        placeholder={t('task.titlePlaceholder')}
-        aria-label={t('task.newSubtask')}
-        onChange={(event) => setValue(event.target.value)}
-        onBlur={() => {
-          if (value.trim().length > 0) onCreate(value.trim());
-          else onCancel();
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' && value.trim().length > 0) {
-            event.preventDefault();
-            onCreate(value.trim());
-          } else if (event.key === 'Escape') {
-            event.preventDefault();
-            onCancel();
-          }
-        }}
-        className="w-full max-w-md rounded border border-accent bg-surface px-2 py-1 text-sm text-content outline-none"
-      />
     </div>
   );
 }
