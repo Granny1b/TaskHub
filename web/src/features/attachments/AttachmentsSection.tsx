@@ -18,15 +18,27 @@ import { MAX_UPLOAD_LABEL, UploadList } from './UploadList.js';
 import { useUploads } from './useUploads.js';
 
 /**
- * What the file picker offers.
+ * What the file picker offers, and what it deliberately does not.
  *
- * `image/*` leads deliberately: on a phone it is what turns the picker into a
- * menu with Photo Library and Take Photo, instead of dropping straight into a
- * file browser. The extensions after it come from the same allowlist the server
- * enforces, so the dialogue cannot drift from what will actually be accepted —
- * being told "not allowed" *after* choosing a file is a poor way to find out.
+ * The extensions come from the same allowlist the server enforces, so the
+ * dialogue cannot drift from what will actually be accepted — being told "not
+ * allowed" *after* choosing a file is a poor way to find out.
+ *
+ * `image/*` is the interesting part. It is what makes Android put **Camera** in
+ * the chooser, and that entry is the one path still known to fail: choosing it
+ * hands control to the camera app, and on the phone this was tested on the tab
+ * does not survive the round trip — the photograph is taken and lost.
+ *
+ * So on a phone it is left out, and the camera is reached through the button
+ * beside this one, which never leaves the page and is confirmed working
+ * (ADR-0045). Photographs remain pickable here through the ordinary document
+ * picker. On a desktop there is no camera intent to walk into, and `image/*`
+ * makes the dialogue tidier, so it stays.
  */
-const ACCEPT = ['image/*', ...ALLOWED_EXTENSIONS.map((extension) => `.${extension}`)].join(',');
+function acceptFor(compact: boolean): string {
+  const extensions = ALLOWED_EXTENSIONS.map((extension) => `.${extension}`);
+  return (compact ? extensions : ['image/*', ...extensions]).join(',');
+}
 
 interface AttachmentsSectionProps {
   taskId: string;
@@ -145,8 +157,14 @@ export function AttachmentsSection({
 
       {cameraOpen ? (
         <CameraSheet
-          onCapture={(file) => upload([file])}
-          onClose={() => setCameraOpen(false)}
+          onCapture={(file) => {
+            clearPickerOpen();
+            upload([file]);
+          }}
+          onClose={() => {
+            clearPickerOpen();
+            setCameraOpen(false);
+          }}
           onFallback={() => {
             // No camera to offer. Send them to the picker that works rather
             // than leaving them looking at an apology.
@@ -202,6 +220,13 @@ export function AttachmentsSection({
               variant="secondary"
               className="h-11 flex-1"
               onClick={() => {
+                /*
+                  Marked exactly like a file picker, because the same thing can
+                  happen: opening a camera stream is enough for the phone to
+                  destroy this tab, and without the marker the page comes back
+                  with no idea it ever tried.
+                */
+                markPickerOpen();
                 setInterrupted(false);
                 setCameraOpen(true);
               }}
@@ -215,7 +240,7 @@ export function AttachmentsSection({
           ref={fileInput}
           type="file"
           multiple
-          accept={ACCEPT}
+          accept={acceptFor(compact)}
           className="hidden"
           onChange={(event) => {
             handleChosen(event.target.files);
