@@ -22,6 +22,24 @@ interface InlineTextProps {
 }
 
 /**
+ * The resting look of a click-to-edit cell. Two jobs, neither of which the
+ * previous styling did.
+ *
+ * **Have a hit area even when empty.** `min-h-6` is what a populated cell
+ * already measures, so nothing moves — but an empty one collapsed to its 4px of
+ * padding inside a 40px row. Clickable in the sense that a 4px ribbon is
+ * clickable: aiming at the middle of the cell hit nothing at all.
+ *
+ * **Look like a field.** The old cue was `hover:bg-surface-hover`, and
+ * `--surface-hover` is the same value the row hover uses — so by the time the
+ * pointer was over a cell, its row had already painted that colour and the
+ * cell's own hover changed nothing visible. An inset panel with a border reads
+ * as somewhere to type against either row state, in both themes.
+ */
+export const FIELD =
+  'w-full min-h-6 truncate rounded border border-transparent px-1 py-0.5 text-left transition-colors duration-150 hover:border-border-strong hover:bg-surface disabled:cursor-not-allowed disabled:hover:border-transparent';
+
+/**
  * Click-to-edit text, used for Uppgift and Kommentarer.
  *
  * Commits on blur and on Enter; Escape abandons. The draft is local state and
@@ -67,12 +85,30 @@ export function InlineText({
         type="button"
         disabled={disabled}
         onClick={() => setEditing(true)}
-        className={`w-full truncate rounded px-1 py-0.5 text-left transition-colors duration-150 hover:bg-surface-hover disabled:cursor-not-allowed ${
+        /*
+          The label belongs on the display button too, not only on the editor it
+          opens. It was passed to the input alone, so a cell with no text and no
+          placeholder was a button with no accessible name whatsoever — a screen
+          reader announced "button", and nothing could address it by name.
+        */
+        aria-label={ariaLabel}
+        className={`${FIELD} ${
           emphasis === true ? 'font-semibold text-content' : 'text-content'
-        } ${value.length === 0 ? 'text-content-muted' : ''} ${className}`}
+        } ${className}`}
         title={value.length > 0 ? value : placeholder}
       >
-        {value.length > 0 ? value : (placeholder ?? '')}
+        {/*
+          The placeholder is a child rather than a colour on the button, because
+          a caller's `className` can carry a text colour of its own and which of
+          two equal-specificity utilities wins is decided by Tailwind's emission
+          order, not by the order they appear in here. A span always inherits
+          last, so a placeholder can never end up as dark as real content.
+        */}
+        {value.length > 0 ? (
+          value
+        ) : (
+          <span className="text-content-muted/60">{placeholder ?? ''}</span>
+        )}
       </button>
     );
   }
@@ -173,7 +209,7 @@ export function InlineDate({ value, onCommit, ariaLabel, disabled, subtle }: Inl
       disabled={disabled}
       onClick={() => setEditing(true)}
       aria-label={ariaLabel}
-      className={`w-full truncate rounded px-1 py-0.5 text-left text-xs tabular-nums transition-colors duration-150 hover:bg-surface-hover disabled:cursor-not-allowed ${
+      className={`${FIELD} text-xs tabular-nums ${
         subtle === true ? 'text-content-muted' : 'text-content'
       }`}
     >

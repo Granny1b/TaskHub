@@ -406,7 +406,6 @@ function TaskRowContainer({
           {...sortable.listeners}
           aria-label={t('dnd.handle', { name: summary.title })}
           title={t('dnd.handleShort')}
-          onClick={(event) => event.stopPropagation()}
           className={`flex cursor-grab touch-none items-center justify-center rounded text-content-muted transition-opacity duration-150 hover:bg-surface-hover hover:text-content ${
             compact
               ? // A touch screen has no hover to reveal it with, so it stays

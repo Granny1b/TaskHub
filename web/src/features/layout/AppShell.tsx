@@ -245,15 +245,27 @@ export function AppShell() {
               ) : null}
             </div>
 
-            {/* Only when there is something to collapse. A button that visibly
-              does nothing teaches people to stop trusting the toolbar. */}
+            {/*
+              Collapse all — phones only.
+
+              The table header carries this control in the column the chevrons
+              are in, which is where a tree view puts it and where the eye looks
+              for it. That header only exists from `md` up, so this is the
+              fallback for the card layout below it rather than a second copy
+              beside the search field.
+
+              Still conditional on something being expanded: a button that
+              visibly does nothing teaches people to stop trusting the toolbar.
+            */}
             {expandedCount > 0 ? (
-              <IconButton
-                label={t('task.collapseAll', { count: expandedCount })}
-                onClick={() => setCollapseNonce((value) => value + 1)}
-              >
-                <CollapseIcon className="h-4 w-4" />
-              </IconButton>
+              <span className="md:hidden">
+                <IconButton
+                  label={t('task.collapseAll', { count: expandedCount })}
+                  onClick={() => setCollapseNonce((value) => value + 1)}
+                >
+                  <CollapseIcon className="h-4 w-4" />
+                </IconButton>
+              </span>
             ) : null}
 
             <span className="hidden md:inline-flex">

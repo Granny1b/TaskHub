@@ -15,7 +15,7 @@ import { IconButton } from '../../components/Button.js';
 import { ChevronRightIcon, GripIcon, PaperclipIcon, PlusIcon } from '../../components/icons.js';
 import type { DragItemData } from '../../lib/dragTypes.js';
 import type { PatchNode } from '../../lib/apiClient.js';
-import { InlineDate, InlineText } from './InlineEdit.js';
+import { FIELD, InlineDate, InlineText } from './InlineEdit.js';
 import { NewSubtaskInput } from './NewSubtaskInput.js';
 import { PercentControl } from './PercentControl.js';
 import { SwipeRow } from './SwipeRow.js';
@@ -343,16 +343,28 @@ export function TaskRow({
         selected ? 'bg-surface-selected' : 'hover:bg-surface-hover'
       } ${busy === true ? 'opacity-60' : ''} ${dragging ? 'z-10 opacity-50 shadow-lg' : ''}`}
     >
+      {/*
+        No click handler on the row.
+
+        There used to be one, opening the detail pane, and seven of the nine
+        cells cancelled it with `stopPropagation` so they could edit instead.
+        What survived was the leftovers: the 8px column gutters, the row's
+        horizontal padding, the strip above and below each cell's content. Land
+        in one of those and the pane opened; land a pixel over and you were
+        typing in a date field. Which you got depended on hitting a gap you
+        could not see.
+
+        One rule instead. Every cell is a field you click to edit; the chevron
+        at the right-hand end opens the task, and it is always visible so it
+        does not have to be guessed at.
+      */}
       <div
         className={`group grid items-center gap-x-2 px-2 ${rowPadding}`}
         style={{ gridTemplateColumns: gridTemplate }}
-        onClick={onSelect}
         role="row"
       >
         {/* The grip. Hidden until the row is hovered or it takes focus. */}
-        <div className="flex justify-center" onClick={(event) => event.stopPropagation()}>
-          {dragHandle}
-        </div>
+        <div className="flex justify-center">{dragHandle}</div>
 
         {/* Expand — on tasks that have subtasks, and on one that + has opened. */}
         <div className="flex justify-center">
@@ -361,10 +373,7 @@ export function TaskRow({
               type="button"
               aria-label={inlineSubtasks ? t('columns.expand') : t('task.openDetails')}
               aria-expanded={inlineSubtasks ? expanded : undefined}
-              onClick={(event) => {
-                event.stopPropagation();
-                openSubtasks();
-              }}
+              onClick={openSubtasks}
               className="flex h-6 w-6 items-center justify-center rounded text-content-muted hover:bg-surface-hover hover:text-content"
             >
               <ChevronRightIcon
@@ -375,7 +384,7 @@ export function TaskRow({
         </div>
 
         {/* Complete — the override that wins over percent. */}
-        <div className="flex justify-center" onClick={(event) => event.stopPropagation()}>
+        <div className="flex justify-center">
           <Checkbox
             checked={complete}
             label={t('columns.complete')}
@@ -385,7 +394,7 @@ export function TaskRow({
         </div>
 
         {/* Datum */}
-        <div onClick={(event) => event.stopPropagation()}>
+        <div>
           <InlineDate
             value={date}
             ariaLabel={t('columns.date')}
@@ -396,7 +405,7 @@ export function TaskRow({
         </div>
 
         {/* Uppgift — main tasks render semibold. */}
-        <div className="min-w-0" onClick={(event) => event.stopPropagation()}>
+        <div className="min-w-0">
           <InlineText
             value={title}
             emphasis
@@ -421,7 +430,7 @@ export function TaskRow({
           typing in a cell.
         */}
         {!compact && showComments ? (
-          <div className="min-w-0" onClick={(event) => event.stopPropagation()}>
+          <div className="min-w-0">
             {document !== undefined ? (
               <InlineText
                 value={comments}
@@ -437,12 +446,13 @@ export function TaskRow({
             ) : (
               <button
                 type="button"
+                aria-label={t('columns.comments')}
                 title={comments.length > 0 ? comments : t('task.commentsPlaceholder')}
                 onClick={() => {
                   setCommentsRequested(true);
                   onRequestDocument();
                 }}
-                className={`w-full truncate rounded px-1 py-0.5 text-left text-sm transition-colors duration-150 hover:bg-surface-hover ${
+                className={`${FIELD} text-sm ${
                   commentsRequested ? 'animate-pulse' : ''
                 } ${comments.length > 0 ? 'text-content-muted' : 'text-content-muted/60'}`}
               >
@@ -454,7 +464,7 @@ export function TaskRow({
 
         {/* Status — percent, main tasks only. */}
         {!compact ? (
-          <div onClick={(event) => event.stopPropagation()}>
+          <div>
             {root !== undefined ? (
               <PercentControl
                 node={root}
@@ -472,7 +482,7 @@ export function TaskRow({
 
         {/* Färdig datum */}
         {!compact ? (
-          <div onClick={(event) => event.stopPropagation()}>
+          <div>
             <InlineDate
               value={completedDate}
               subtle
@@ -482,8 +492,23 @@ export function TaskRow({
           </div>
         ) : null}
 
-        {/* Trailing affordances: attachment count, subtask progress, add. */}
-        <div className="flex items-center justify-end gap-1.5 text-xs text-content-muted">
+        {/*
+          Trailing affordances: attachment count, subtask progress, add, open.
+
+          Pinned to the right edge of the horizontal scroll.
+
+          The table is wider than its column when the detail pane is open on a
+          1400px screen — measured at 179px of overflow — and the chevron below
+          is the only way to open a task. Left unpinned it scrolled out of sight
+          in exactly the state where you most want it: pane open, wanting the
+          next task. An explicit background because a sticky cell has to be
+          opaque, and the row's own colour lives on an ancestor.
+        */}
+        <div
+          className={`sticky right-0 z-[1] flex items-center justify-end gap-1.5 pl-2 text-xs text-content-muted ${
+            selected ? 'bg-surface-selected' : 'bg-surface group-hover/row:bg-surface-hover'
+          }`}
+        >
           {summary.attachmentCount > 0 ? (
             <span className="flex items-center gap-0.5" title={t('columns.attachments')}>
               <PaperclipIcon className="h-3.5 w-3.5" />
@@ -497,28 +522,25 @@ export function TaskRow({
             </span>
           ) : null}
 
-          {/* Most of the row is click-to-edit, so opening the detail pane needs
-              an affordance of its own rather than relying on hitting the gaps. */}
+          {/* Adding a subtask is a second thought about a row you are already
+              working in, so it stays on hover. */}
           <span className="flex items-center opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100">
-            <IconButton
-              label={t('task.newSubtask')}
-              onClick={(event) => {
-                event.stopPropagation();
-                addSubtask();
-              }}
-            >
+            <IconButton label={t('task.newSubtask')} onClick={addSubtask}>
               <PlusIcon className="h-4 w-4" />
             </IconButton>
-            <IconButton
-              label={t('task.openDetails')}
-              onClick={(event) => {
-                event.stopPropagation();
-                onSelect();
-              }}
-            >
-              <ChevronRightIcon className="h-4 w-4" />
-            </IconButton>
           </span>
+
+          {/*
+            Always visible, unlike everything else in this cell.
+
+            It is the only thing that opens a task now that the row itself does
+            not, so hiding it until hover would make the one deliberate way in
+            the one you have to discover by accident. It sits at the end of the
+            row, pointing the way the pane opens.
+          */}
+          <IconButton label={t('task.openDetails')} onClick={onSelect}>
+            <ChevronRightIcon className="h-4 w-4" />
+          </IconButton>
         </div>
       </div>
 
@@ -778,9 +800,13 @@ function SubtaskRow({
 
       {!compact && showComments ? (
         <div className="min-w-0">
+          {/* The placeholder is what a main task's cell has always had, and it
+              is the difference between an empty cell you can see and click and
+              one that renders as nothing at all. */}
           <InlineText
             value={node.comments}
             ariaLabel={t('columns.comments')}
+            placeholder={t('task.commentsPlaceholder')}
             className="text-sm text-content-muted"
             onCommit={(next) => onPatch({ comments: next })}
           />
@@ -801,7 +827,11 @@ function SubtaskRow({
         </div>
       ) : null}
 
-      <div className="flex items-center justify-end gap-1 text-xs text-content-muted">
+      {/* Pinned like the main row's, for the same reason. `bg-inherit` works
+          here because a subtask row carries its own background, so the cell
+          tracks the row through hover without a second rule that could get out
+          of step with it. */}
+      <div className="sticky right-0 z-[1] flex items-center justify-end gap-1 bg-inherit pl-2 text-xs text-content-muted">
         {node.attachments.length > 0 ? (
           <span className="flex items-center gap-0.5">
             <PaperclipIcon className="h-3.5 w-3.5" />
