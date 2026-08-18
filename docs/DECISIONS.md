@@ -1477,10 +1477,17 @@ while a camera app allocates hundreds of megabytes. The photograph is produced
 inside the page that wants it.
 
 **The resolution trade costs nothing here.** A frame from the video stream is
-smaller than what the camera app would save — but every photograph is scaled to
-2560px on upload anyway (ADR-0040), so the stream is asked for roughly that. The
-result is the same picture that would have survived compression, without ever
-building the enormous one that could not survive the journey.
+smaller than what the camera app would save, and that is the point: every
+photograph is scaled to 2560px on upload anyway (ADR-0040), so nothing above
+that ceiling ever reaches storage.
+
+The stream is asked for at 1920, or 1280 where `deviceMemory` reports 4GB or
+less — deliberately _below_ the compression ceiling rather than matched to it.
+Matching it was the first attempt and it was the wrong reading of ADR-0040: that
+ceiling is applied after capture, so requesting it here only made the camera
+allocate its largest buffers on the device least able to afford them. 1920 is a
+native mode on essentially every phone camera, so it arrives without scaling,
+and it is far more detail than a photograph of a machine fault needs.
 
 **The camera is released explicitly.** A track left running keeps the phone's
 camera indicator lit and the sensor powered long after the user has moved on,
@@ -1504,3 +1511,131 @@ same way, the cause is elsewhere entirely.
 **Rejected:** more repairs to the file-input path. Three attempts produced three
 regressions in behaviour nobody could observe from here; a fourth would have
 been the same bet again.
+
+---
+
+## ADR-0046 — Adding a subtask offers the same control everywhere
+
+**Status.** Accepted.
+
+**Context.** Reported from use: "the behaviour of this add subtask seems
+inconsistent." It was. Four surfaces had grown four different answers, and each
+one was defensible on its own.
+
+The desktop row showed `+ Ny deluppgift` under an expanded task only while that
+task had **no** subtasks — `children.length === 0`. So the button someone
+learned on an empty task disappeared the first time they used it, and a task
+that already had subtasks never offered it at all. The second subtask had to be
+added through the hover-only `+` in the row's trailing cell, which is not where
+anybody had just been looking.
+
+The phone card showed the same button whenever a row was open, unconditionally.
+
+That count-based rule had a second effect. An expanded row renders before its
+aggregate arrives, so `children` is empty for the first few hundred
+milliseconds — long enough for the button to appear and then remove itself as
+the subtasks loaded.
+
+Pressing the hover `+` expanded the row, and a row with no subtasks was given no
+chevron, on the reasoning that there is nothing to expand. Cancel the input and
+the row stayed open, empty, and with no control on it that could close it again;
+collapse-all was the only way out. That stranded row is what the report's
+screenshot showed.
+
+The detail pane — the only route a phone has to a task with no subtasks yet,
+since the card has no `+` — used `window.prompt`.
+
+**Decision.** One rule, `subtaskAffordances`, read by both layouts:
+
+- `+ Ny deluppgift` sits at the foot of every open row, with subtasks or
+  without, exactly as `+ Ny uppgift` sits at the foot of the list. It is not
+  conditioned on the subtasks having loaded, so it cannot flicker.
+- The chevron appears when a row has subtasks **or** is expanded. Whatever
+  opened a row can always close it.
+- Cancelling an add that opened the row closes it again; creating a subtask
+  leaves it open, because there is now something in it to see.
+- The pane uses the same input component as the list. `window.prompt` is
+  unstyled, ignores Escape on some platforms, and is suppressed outright by
+  several mobile browsers — so on the one surface that depended on it, the
+  button could do nothing at all.
+
+**Consequences.** A childless task on a phone still has no add-subtask control
+in the list itself; the route is to open the task. Adding a second 44px button
+to a 360px card would take that width from the title, and the pane's control now
+works properly, so this is left as it is rather than traded blind.
+
+**Also fixed here, same family.** The `×` on a subtask row was written with
+`group-hover:`, which looks for an unnamed `.group` ancestor. A subtask has
+none — its row is `group/row` — so the button sat at opacity 0 no matter how it
+was hovered, and subtasks could only be deleted from the detail pane. Measured
+at 0 before and 1-on-hover after, in a browser.
+
+**Rejected:** giving every row a chevron. It makes the column uniform, but it
+offers to expand three hundred rows that have nothing under them, and expanding
+a row opens its blob.
+
+---
+
+## ADR-0047 — A row is a set of fields; one visible control opens the task
+
+**Status.** Accepted.
+
+**Context.** Reported from use: "clicking the task row is a bit weird, in some
+spots it opens the right panel and sometimes you click the comment box."
+
+The row had `onClick={onSelect}` on the grid, and seven of its nine cells
+cancelled that with `stopPropagation` so they could edit instead. What was left
+for the row handler was the leftovers — the 8px column gutters, the row's
+horizontal padding, the few pixels above and below each cell's content. Land in
+one of those and the detail pane opened; land a pixel to either side and you
+were typing in a date field. Nothing on screen marked the boundary, because the
+boundary was the gaps between things.
+
+Two details made it worse. The cells did not read as fields: their only hover cue
+was `hover:bg-surface-hover`, and `--surface-hover` is the same value the _row_
+hover uses, so by the time the pointer was over a cell its row had already
+painted that colour and the cell's own hover changed nothing. And the one
+deliberate way to open a task — the chevron in the trailing cell — was hidden
+until hover, so the discoverable behaviour was the accidental one.
+
+**Decision.** Remove the row's click handler, and with it all seven
+`stopPropagation` guards. Every cell is a field you click to edit. The chevron at
+the end of the row opens the task, and it is always visible.
+
+This is the right way round for a workbook replacement. Clicking a cell to edit
+it is the gesture people bring with them; opening a detail pane is the addition,
+so the addition gets the button.
+
+**Fields now look like fields.** At rest, nothing. On hover, an inset panel —
+`bg-surface` with a `border-strong` outline, on a transparent border at rest so
+the box never changes size. That reads against the plain row and the hovered row
+and the selected row, in both themes, which a background tint could not.
+
+**The trailing cell is pinned to the right edge of the horizontal scroll.**
+Measured: at 1409px with the detail pane open the table overflows its column by
+179px, which is exactly the width of that cell. Unpinned, the only control that
+opens a task scrolled out of sight in the state where you most want it — pane
+open, wanting the next task. `sticky right-0`, with an explicit background,
+because a sticky cell must be opaque and the row's colour lives on an ancestor.
+
+**Consequences.** Opening a task is one more pixel of aim than sweeping at a row.
+That is the trade: a small, always-available target instead of a large one that
+did something else most of the time. The phone card is untouched — its whole body
+is already one tap that opens the task, with the checkbox and chevron beside it.
+
+**Also fixed here.** An empty `Kommentarer` cell on a subtask row rendered as
+nothing: no placeholder was passed, so the button's content was the empty string
+and its height collapsed to its 4px of padding inside a 40px row. Measured 217×4
+against 217×24 on a main task's row, with no accessible name at all, because
+`ariaLabel` was only ever applied to the editor and not to the display button.
+Both are now structural — `min-h-6` on every field and the label on both states —
+so the next caller cannot reintroduce it by forgetting a placeholder.
+
+**Rejected:** keeping row-click and making the cells cover every pixel so there
+are no gaps. The gutters are what the grid needs to stay readable; a gesture
+whose meaning depends on hitting one is a coin flip however thin you make it.
+
+**Rejected:** opening the task from its title and editing on double-click. It
+reads well — the title is the row's identity — but it makes one cell behave
+unlike the other eight, and renaming a task in the list is a primary behaviour
+(§10), not one to bury behind a second gesture.
