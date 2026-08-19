@@ -214,6 +214,15 @@ export function AppShell() {
               </button>
             ) : null}
 
+            {/*
+              One search field for the whole app, whatever section you are in.
+
+              The files view used to carry a second one inside its own toolbar
+              while this one kept sitting up here doing nothing — two boxes on
+              screen, one of them dead, and `Ctrl K` landing in the dead one.
+              Now this is the only one, and the placeholder says what it will
+              search.
+            */}
             <div
               className={`relative flex items-center ${selection.kind === 'files' ? 'ml-auto' : 'ml-2'}`}
             >
@@ -222,8 +231,8 @@ export function AppShell() {
                 ref={searchRef}
                 type="search"
                 value={search}
-                placeholder={t('filters.search')}
-                aria-label={t('filters.search')}
+                placeholder={selection.kind === 'files' ? t('files.search') : t('filters.search')}
+                aria-label={selection.kind === 'files' ? t('files.search') : t('filters.search')}
                 onChange={(event) => setSearch(event.target.value)}
                 className="h-8 w-32 rounded-md border border-border-subtle bg-surface pl-7 pr-12 text-sm text-content outline-none focus:border-accent sm:w-56"
               />
@@ -268,11 +277,19 @@ export function AppShell() {
               </span>
             ) : null}
 
-            <span className="hidden md:inline-flex">
-              <IconButton label={t('task.new')} onClick={() => setNewTaskNonce((v) => v + 1)}>
-                <PlusIcon className="h-4 w-4" />
-              </IconButton>
-            </span>
+            {/*
+              No "new task" button up here.
+
+              It did nothing at all in the files view, where the list that
+              consumes the signal is not mounted — and everywhere else it was a
+              third way to do something already offered twice on screen: the
+              "+ Ny uppgift" row at the foot of the list, the empty state's own
+              button when there is no list yet, and the `n` shortcut. The place
+              a task gets created is the end of the list it goes into.
+
+              The phone keeps its bottom action bar: on a touch screen the foot
+              of a long list is not within reach, which is what that bar is for.
+            */}
           </header>
 
           <main id="task-list" tabIndex={-1} className="min-h-0 flex-1">
@@ -280,7 +297,7 @@ export function AppShell() {
               NOT by the create signal — remounting on every "new task" would
               collapse everything the user had open. */}
             {selection.kind === 'files' ? (
-              <FilesView compact={!isDesktop} onOpenTask={openTask} />
+              <FilesView compact={!isDesktop} search={search} onOpenTask={openTask} />
             ) : (
               <TaskListView
                 key={`${selection.kind}-${selection.kind === 'list' ? selection.id : ''}`}
@@ -296,17 +313,24 @@ export function AppShell() {
             )}
           </main>
 
-          {/* Bottom action bar: the primary action within thumb reach. */}
-          <div className="shrink-0 border-t border-border-subtle p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] md:hidden">
-            <button
-              type="button"
-              onClick={() => setNewTaskNonce((value) => value + 1)}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-accent text-sm font-medium text-accent-contrast"
-            >
-              <PlusIcon className="h-4 w-4" />
-              {t('task.new')}
-            </button>
-          </div>
+          {/* Bottom action bar: the primary action within thumb reach.
+
+              Not in the files view, where it was the same dead button as the
+              one that used to be in the header — the list it signals is not
+              mounted there. Files arrive by being attached to a task, so there
+              is no create action to offer on this screen. */}
+          {selection.kind !== 'files' ? (
+            <div className="shrink-0 border-t border-border-subtle p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] md:hidden">
+              <button
+                type="button"
+                onClick={() => setNewTaskNonce((value) => value + 1)}
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-accent text-sm font-medium text-accent-contrast"
+              >
+                <PlusIcon className="h-4 w-4" />
+                {t('task.new')}
+              </button>
+            </div>
+          ) : null}
         </div>
 
         {/* Desktop detail pane */}
