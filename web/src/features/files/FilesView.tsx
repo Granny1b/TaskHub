@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { isImageContentType, type StoredFile } from '@taskhub/shared';
 import { Button, IconButton } from '../../components/Button.js';
 import { EmptyState } from '../../components/EmptyState.js';
-import { PaperclipIcon, SearchIcon, TrashIcon } from '../../components/icons.js';
+import { PaperclipIcon, TrashIcon } from '../../components/icons.js';
 import { Skeleton } from '../../components/Skeleton.js';
 import { api } from '../../lib/apiClient.js';
 import { useDeleteFile, useFiles } from '../../lib/queries.js';
@@ -60,15 +60,23 @@ export function totalBytes(files: readonly StoredFile[]): number {
 
 interface FilesViewProps {
   compact: boolean;
+  /**
+   * The app header's search term.
+   *
+   * This view used to keep its own, which meant two search boxes on screen at
+   * once — and the header's did nothing here, because the term it feeds goes to
+   * the task list, which is not mounted in this section. One field, in the one
+   * place it always is, reachable with `Ctrl`+`K` like everywhere else.
+   */
+  search: string;
   onOpenTask: (taskId: string) => void;
 }
 
-export function FilesView({ compact, onOpenTask }: FilesViewProps) {
+export function FilesView({ compact, search, onOpenTask }: FilesViewProps) {
   const { t } = useTranslation();
   const files = useFiles();
   const deleteFile = useDeleteFile();
 
-  const [search, setSearch] = useState('');
   const [kind, setKind] = useState<Kind>('all');
   const [confirming, setConfirming] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -138,20 +146,8 @@ export function FilesView({ compact, onOpenTask }: FilesViewProps) {
     <div className="flex h-full flex-col">
       <div className="shrink-0 border-b border-border-subtle px-3 py-2">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex min-w-0 flex-1 items-center">
-            <SearchIcon className="pointer-events-none absolute left-2 h-4 w-4 text-content-muted" />
-            <input
-              type="search"
-              value={search}
-              placeholder={t('files.search')}
-              aria-label={t('files.search')}
-              onChange={(event) => setSearch(event.target.value)}
-              className={`w-full rounded-md border border-border-subtle bg-surface pl-7 pr-2 text-sm text-content outline-none focus:border-accent ${
-                compact ? 'h-11' : 'h-8'
-              }`}
-            />
-          </div>
-
+          {/* Search lives in the app header — see the `search` prop. What stays
+              here is the one filter that is only meaningful on this screen. */}
           <div className="flex gap-1" role="group" aria-label={t('files.filterByType')}>
             {(['all', 'image', 'document', 'other'] as const).map((option) => (
               <button

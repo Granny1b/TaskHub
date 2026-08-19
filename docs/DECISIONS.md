@@ -1639,3 +1639,55 @@ whose meaning depends on hitting one is a coin flip however thin you make it.
 reads well — the title is the row's identity — but it makes one cell behave
 unlike the other eight, and renaming a task in the list is a primary behaviour
 (§10), not one to bury behind a second gesture.
+
+---
+
+## ADR-0048 — A control that does nothing in a section is not shown in it
+
+**Status.** Accepted.
+
+**Context.** Reported from use, about the `+` in the app header while the files
+view is open: "this button does nothing, I don't think it brings any value."
+
+Both halves were right. The button incremented a create-a-task signal consumed
+by `TaskListView` — which is not mounted in the files section, so pressing it
+did nothing whatsoever. And elsewhere it was a third route to something already
+offered twice on the same screen: the `+ Ny uppgift` row at the foot of the list,
+the empty state's own button when there is no list yet, and the `n` shortcut.
+
+Looking properly, it was not alone. The same header carried the **search field**,
+whose term also feeds the task list — equally dead in the files section — while
+the files view rendered a _second_ search box of its own inside its toolbar. Two
+fields on screen, one of them inert, and `Ctrl`+`K` landing in the inert one. The
+mobile bottom action bar was the same dead button again, on the surface the
+report could not see.
+
+**Decision.** Three changes, one rule: a control that cannot act on what is on
+screen is not on screen.
+
+- **The header `+` is gone entirely**, not merely hidden in the files view. A
+  task is created at the end of the list it goes into, which is where the eye
+  already is after reading the list.
+- **The mobile bottom action bar is hidden in the files view** and kept
+  everywhere else. On a touch screen the foot of a long list is not within
+  reach, which is the whole reason that bar exists — so it is not redundant the
+  way the header button was.
+- **One search field for the whole app.** The files view's own box is gone; the
+  header field feeds it, and its placeholder says which of the two things it
+  will search. `Ctrl`+`K` now reaches a field that works in every section.
+
+**Consequences.** Creating a task from the keyboard is `n`, and from the pointer
+it is the row at the foot of the list. Nothing else changed about it.
+
+Searching files is now one keystroke closer than it was, and one field further
+from the list it filters — a real cost, paid to remove a duplicate control and a
+dead shortcut. Should the files view ever grow filters that belong beside a
+search box, this is the decision to revisit.
+
+**Verified** against Azurite with two files attached to different tasks: typing
+in the header field narrowed the files list to each in turn, `Ctrl`+`K` focused
+it, and clearing restored both.
+
+**Rejected:** hiding the header `+` only in the files view. It would have fixed
+the reported symptom and left a third way to create a task sitting in a corner
+of a toolbar, which is what made it easy to miss that it was broken.
