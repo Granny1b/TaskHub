@@ -9,6 +9,7 @@ import { useIsDesktop } from '../../lib/useMediaQuery.js';
 import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts.js';
 import { useFocusTrap } from '../../lib/useFocusTrap.js';
 import { useWindowDropGuard } from '../attachments/DropZone.js';
+import { usePasteToAttach } from '../attachments/usePasteToAttach.js';
 /*
   The detail pane — and with it the whole attachment pipeline — is never on
   screen at first paint. Loading it lazily keeps the initial bundle to what the
@@ -77,6 +78,8 @@ export function AppShell() {
   // A file dropped outside a drop zone must do nothing, not navigate away and
   // discard what the user was doing.
   useWindowDropGuard();
+  // Ctrl+V with a screenshot on the clipboard attaches it to the task in hand.
+  usePasteToAttach(selectedTaskId, openTask);
   useFocusTrap(drawerRef, drawerOpen, () => setDrawerOpen(false));
 
   useKeyboardShortcuts({
@@ -305,6 +308,7 @@ export function AppShell() {
                 compact={!isDesktop}
                 selectedTaskId={selectedTaskId}
                 onSelectTask={openTask}
+                followFocus={isDesktop && selectedTaskId !== null}
                 activeListId={activeListId}
                 createSignal={newTaskNonce}
                 collapseSignal={collapseNonce}

@@ -1691,3 +1691,85 @@ it, and clearing restored both.
 **Rejected:** hiding the header `+` only in the files view. It would have fixed
 the reported symptom and left a third way to create a task sitting in a corner
 of a toolbar, which is what made it easy to miss that it was broken.
+
+## ADR-0049 — Uploads belong to a task, and paste is caught at the shell
+
+**Context.** Three things about attachments were wrong at once, and they shared
+a cause: the upload list was component state inside the attachments panel, and
+paste was a listener that panel installed.
+
+- A screenshot could only be pasted while the detail pane was open, because
+  that was the only time anything was listening.
+- Closing the pane, or switching task, discarded the progress of any upload in
+  flight — and its error, if it failed. A failed upload left no trace.
+- An upright phone photo came out **squashed**. `readImageHeaderSize` reported
+  the stored pixel size and ignored EXIF orientation; `decodeScaled` passed that
+  size to `createImageBitmap` as an exact `resizeWidth`/`resizeHeight` alongside
+  `imageOrientation: 'from-image'`. The decoder rotates first and resizes
+  second, so a 3000×4000 portrait was forced into 2560×1920. Reproduced in
+  Chromium with a synthetic orientation-6 JPEG. It affected the compressed
+  upload and the thumbnail alike.
+
+**Decision.**
+
+- **The upload list is a module-level store** (`useUploads.ts`), keyed by task.
+  `startUploads(client, taskId, files)` can be called from anywhere, and
+  `useUploads(taskId)` subscribes a component to that task's items.
+- **One paste listener, at the shell** (`usePasteToAttach`). The target is the
+  row the cursor is in, else the task open in the pane; pasting onto a task
+  whose pane is closed opens it. Inside a text field, clipboard _text_ wins —
+  Excel and Word put a picture next to the text they copy, and pasting that
+  into Kommentarer must paste the words. Clipboard images are renamed from
+  `image.png` to `skarmklipp-<timestamp>.png`.
+- **The header parser reads EXIF orientation** and reports the displayed size.
+- **The pipeline does less waiting.** The thumbnail is rendered and uploaded
+  alongside the file instead of after it. A PNG that already fits within the
+  size limit is not decoded at all (it would stay a PNG, so there was nothing
+  to gain — this is every ordinary screenshot). The blob PUT is retried once on
+  a dropped connection or a 5xx. A commit that meets a 409 refetches and
+  retries, since adding an attachment cannot collide with any other edit.
+- **The "phone shut the page down" notice is removed**, and `pickerWatch.ts`
+  with it. The in-page camera (ADR-0045) is the route that works; the notice
+  described a failure of a route the picker no longer offers.
+
+**Consequences.** Uploads continue, and stay visible, across pane changes. The
+store outlives components by design, so it holds items until they finish or are
+dismissed; nothing persists across a reload.
+
+The paste listener is always installed, but the pipeline behind it is imported
+on first use, so the list's first paint does not pay for it.
+
+**Verified** against Azurite in Chromium: paste with the cursor in a row title
+(pane open on another task, and pane closed), paste with nothing focused, text
+plus image into a field left alone, and a 4000×3000 orientation-6 JPEG whose
+thumbnail came back 300×400.
+
+## ADR-0050 — Titles wrap; the pane follows the row being edited
+
+**Context.** A task title was truncated to one line in the list and twice more
+in the detail pane, so a sentence-long title could not be read anywhere without
+clicking into it. Separately, with the pane open on one task, clicking into
+another row's title edited that row while the pane went on showing the first.
+
+**Decision.**
+
+- `InlineText` takes `wrap`. Display shows the whole value; the editor is a
+  textarea that grows to fit and keeps the display's font, so entering it does
+  not move anything. Enter still commits, and line breaks are folded to spaces
+  — a wrapped title is still one line of text.
+- Uppgift's share of the flexible width goes from 1.6 to 2.4 and its floor from
+  160px to 220px. Kommentarer stays a one-line preview.
+- While the pane is open on desktop, focusing a text field in another row (or
+  one of its subtasks) selects that row's task. With the pane closed, nothing
+  opens — the chevron remains the one control that opens a task (ADR-0047).
+- Escape inside a field only abandons the edit. It used to close the pane as
+  well, which the follow behaviour would have made a constant annoyance.
+- `usePatchNode` predicts the _listing_ as well as the document, so ticking or
+  retitling a collapsed row is immediate instead of waiting on the write and
+  the refetch; the row is also handed its new ETag, so a second quick edit no
+  longer starts with a guaranteed 409. Hovering the open-task chevron
+  prefetches the document.
+
+**Rejected:** following focus from every control in a row. The checkbox and the
+date are quick actions people perform down a column; moving the pane on each
+would make it flicker through tasks nobody asked to open.

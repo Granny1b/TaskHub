@@ -3,6 +3,7 @@ import {
   MIN_SAVING_RATIO,
   SKIP_BELOW_BYTES,
   isWorthKeeping,
+  needsResize,
   planCompression,
   renameForType,
 } from './imageCompression.js';
@@ -124,5 +125,19 @@ describe('isWorthKeeping', () => {
 
   it('rejects an empty result', () => {
     expect(isWorthKeeping(1000, 0)).toBe(false);
+  });
+});
+
+describe('needsResize', () => {
+  it('leaves a screenshot that already fits alone', () => {
+    // The pasted-screenshot case: a PNG stays a PNG, so with nothing to resize
+    // there is nothing to gain from decoding it at all.
+    expect(needsResize(1920, 1080, 2560)).toBe(false);
+    expect(needsResize(2560, 1440, 2560)).toBe(false);
+  });
+
+  it('resizes when either edge is over the limit', () => {
+    expect(needsResize(3840, 2160, 2560)).toBe(true);
+    expect(needsResize(1080, 5000, 2560)).toBe(true);
   });
 });

@@ -68,6 +68,7 @@
     "add": "Lägg till filer",
     "camera": "Kamera",
     "drop": "Släpp filer här",
+    "dropOrPaste": "Släpp filer här, eller klistra in ett skärmklipp med Ctrl+V",
     "uploading": "Laddar upp…",
     "cancel": "Avbryt",
     "tooLarge": "Filen är för stor (max {{max}} MB)",
@@ -78,7 +79,6 @@
     "confirmDelete": "Ta bort bilagan?",
     "noFilesInDrop": "Inget av det du släppte var en fil. E-post kan inte dras direkt från Outlook – spara den först (Arkiv → Spara som) och släpp .msg-filen här.",
     "nothingSelected": "Ingen bild kom tillbaka från kameran. Prova \"Lägg till filer\" och välj bilden därifrån.",
-    "pickerInterrupted": "Telefonen stängde av sidan medan kameran var öppen, så bilden kom aldrig fram. Det beror på att minnet tog slut – stäng några flikar i webbläsaren, eller ta bilden i kamera-appen och lägg till den med \"Lägg till filer\".",
     "takePhoto": "Ta bilden",
     "cameraDenied": "Kameran är blockerad. Kontrollera två saker: att webbläsaren själv får använda kameran (telefonens Inställningar → Appar → Brave → Behörigheter → Kamera), och att den här sidan får det (lås-ikonen till vänster om adressen → Behörigheter). Kommer ingen fråga alls är det oftast det första.",
     "cameraMissing": "Ingen kamera kunde startas. Den kan vara upptagen av en annan app – stäng kamera-appen och försök igen, eller lägg till bilden som fil."

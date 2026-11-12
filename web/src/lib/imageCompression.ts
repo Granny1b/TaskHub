@@ -1,4 +1,5 @@
 import { decodeScaled } from './decodeImage.js';
+import { readImageHeaderSize } from './imageHeader.js';
 
 /**
  * Shrink photographs before they are uploaded.
@@ -23,6 +24,8 @@ import { decodeScaled } from './decodeImage.js';
  *  - **WebP** — already an efficient codec, and it may be animated.
  *  - **Anything under {@link SKIP_BELOW_BYTES}** — a screenshot or a small
  *    photo has nothing worth taking, and re-encoding only loses quality.
+ *  - **A PNG that already fits within {@link COMPRESSION_MAX_EDGE}** — it would
+ *    stay a PNG, so without a resize there is nothing to gain.
  *  - **Non-images** — a PDF drawing must arrive byte for byte.
  *
  * The user can turn the whole thing off; see `imageQuality` in preferences.ts.
@@ -111,6 +114,11 @@ export function renameForType(fileName: string, contentType: string): string | n
   return `${base}.${extension}`;
 }
 
+/** Whether an image is larger than the limit on its longest edge. */
+export function needsResize(width: number, height: number, maxEdge: number): boolean {
+  return Math.max(width, height) > maxEdge;
+}
+
 /** Whether a re-encoded candidate saves enough to be worth using. */
 export function isWorthKeeping(originalBytes: number, candidateBytes: number): boolean {
   return candidateBytes > 0 && candidateBytes <= originalBytes * MIN_SAVING_RATIO;
@@ -132,6 +140,22 @@ export async function compressImage(
   const plan = planCompression(file.type, file.size);
   if (plan.action === 'skip') return null;
 
+  const maxEdge = options.maxEdge ?? COMPRESSION_MAX_EDGE;
+
+  /*
+    A PNG that already fits is left alone, without decoding it.
+
+    PNG stays PNG here, so the only saving on offer is from resizing. A
+    screenshot is almost never wider than the limit, and for those the old code
+    decoded the whole picture, re-encoded it, found the result no smaller, and
+    threw it away — the better part of a second on every pasted screenshot,
+    which is exactly the upload that should feel instant.
+  */
+  if (plan.outputType === 'image/png') {
+    const size = await readImageHeaderSize(file);
+    if (size !== null && !needsResize(size.width, size.height, maxEdge)) return null;
+  }
+
   /*
     Decoded straight to the target size, never at full resolution.
 
@@ -140,7 +164,7 @@ export async function compressImage(
     `decodeScaled` asks the decoder for the size we actually want, so peak
     memory is the output's, not the camera's. See decodeImage.ts.
   */
-  const bitmap = await decodeScaled(file, options.maxEdge ?? COMPRESSION_MAX_EDGE);
+  const bitmap = await decodeScaled(file, maxEdge);
   if (bitmap === null) return null;
 
   try {

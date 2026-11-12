@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { THUMBNAIL_MAX_EDGE, pastedFileName, thumbnailSize } from './thumbnails.js';
+import { THUMBNAIL_MAX_EDGE, thumbnailSize } from './thumbnails.js';
 
 describe('thumbnailSize', () => {
   it('scales a landscape image to the max edge, preserving aspect ratio', () => {
@@ -35,28 +35,5 @@ describe('thumbnailSize', () => {
 
   it('honours a custom max edge', () => {
     expect(thumbnailSize(1000, 500, 100)).toEqual({ width: 100, height: 50 });
-  });
-});
-
-describe('pastedFileName', () => {
-  const at = new Date('2026-08-11T09:30:15Z');
-
-  it('names a pasted screenshot with a timestamp', () => {
-    // Clipboard images arrive as "image.png" or unnamed, so pasting three
-    // screenshots would otherwise produce three identical names.
-    expect(pastedFileName('image/png', at)).toBe('skarmklipp-2026-08-11-09-30-15.png');
-  });
-
-  it('uses jpg rather than jpeg, matching the extension allowlist', () => {
-    expect(pastedFileName('image/jpeg', at)).toBe('skarmklipp-2026-08-11-09-30-15.jpg');
-  });
-
-  it('falls back to png for an unrecognisable type', () => {
-    expect(pastedFileName('', at)).toMatch(/\.png$/);
-  });
-
-  it('produces distinct names one second apart', () => {
-    const later = new Date('2026-08-11T09:30:16Z');
-    expect(pastedFileName('image/png', at)).not.toBe(pastedFileName('image/png', later));
   });
 });

@@ -60,6 +60,16 @@ export interface RowCallbacks {
   onRemoveChild: (childId: string) => void;
   onSelect: () => void;
   onOpenPercentSheet?: (node: TaskNode) => void;
+  /**
+   * The user has started working in one of this row's text fields.
+   *
+   * Supplied only while the detail pane is open on another task: the pane then
+   * follows, so what is beside the list is always the task being typed in
+   * rather than the one that was opened a minute ago.
+   */
+  onFocusField?: (() => void) | undefined;
+  /** The pointer is on the control that opens this task — load it now. */
+  onOpenIntent?: (() => void) | undefined;
 }
 
 interface TaskRowProps extends RowCallbacks {
@@ -129,6 +139,8 @@ export function TaskRow({
   onRemoveChild,
   onSelect,
   onOpenPercentSheet,
+  onFocusField,
+  onOpenIntent,
 }: TaskRowProps) {
   const { t } = useTranslation();
   const [addingChild, setAddingChild] = useState(false);
@@ -214,6 +226,7 @@ export function TaskRow({
       <div
         ref={rowRef}
         style={rowStyle}
+        data-task-id={summary.id}
         className={`group/row border-b border-border-subtle bg-surface ${
           selected ? 'bg-surface-selected' : ''
         } ${busy === true ? 'opacity-60' : ''} ${dragging ? 'z-10 opacity-50 shadow-lg' : ''}`}
@@ -240,7 +253,7 @@ export function TaskRow({
 
             <button type="button" onClick={onSelect} className="min-w-0 flex-1 py-2 text-left">
               <span
-                className={`block truncate text-sm font-semibold ${
+                className={`block text-sm font-semibold [overflow-wrap:anywhere] ${
                   complete ? 'text-content-muted line-through' : 'text-content'
                 }`}
               >
@@ -339,6 +352,9 @@ export function TaskRow({
     <div
       ref={rowRef}
       style={rowStyle}
+      // Read by the paste handler: a screenshot pasted while the cursor is
+      // anywhere in this row belongs to this task.
+      data-task-id={summary.id}
       className={`group/row border-b border-border-subtle bg-surface transition-colors duration-150 ${
         selected ? 'bg-surface-selected' : 'hover:bg-surface-hover'
       } ${busy === true ? 'opacity-60' : ''} ${dragging ? 'z-10 opacity-50 shadow-lg' : ''}`}
@@ -404,11 +420,14 @@ export function TaskRow({
           />
         </div>
 
-        {/* Uppgift — main tasks render semibold. */}
-        <div className="min-w-0">
+        {/* Uppgift — main tasks render semibold, and wrap rather than truncate:
+            the title is the one thing in the row that has to be readable in
+            full without opening anything. */}
+        <div className="min-w-0" onFocusCapture={onFocusField}>
           <InlineText
             value={title}
             emphasis
+            wrap
             ariaLabel={t('columns.title')}
             onCommit={(next) => {
               if (next.length > 0) onPatch(undefined, { title: next });
@@ -430,7 +449,7 @@ export function TaskRow({
           typing in a cell.
         */}
         {!compact && showComments ? (
-          <div className="min-w-0">
+          <div className="min-w-0" onFocusCapture={onFocusField}>
             {document !== undefined ? (
               <InlineText
                 value={comments}
@@ -538,9 +557,11 @@ export function TaskRow({
             the one you have to discover by accident. It sits at the end of the
             row, pointing the way the pane opens.
           */}
-          <IconButton label={t('task.openDetails')} onClick={onSelect}>
-            <ChevronRightIcon className="h-4 w-4" />
-          </IconButton>
+          <span className="flex" onPointerEnter={onOpenIntent}>
+            <IconButton label={t('task.openDetails')} onClick={onSelect}>
+              <ChevronRightIcon className="h-4 w-4" />
+            </IconButton>
+          </span>
         </div>
       </div>
 
@@ -552,7 +573,8 @@ export function TaskRow({
       ) : null}
 
       {expanded ? (
-        <div className="pb-1">
+        // A subtask's text fields count as working in this task, too.
+        <div className="pb-1" onFocusCapture={onFocusField}>
           <SortableContext
             items={children.map((child) => child.id)}
             strategy={verticalListSortingStrategy}
@@ -682,7 +704,7 @@ function CompactSubtaskRow({
           />
 
           <span
-            className={`min-w-0 flex-1 truncate text-sm ${
+            className={`min-w-0 flex-1 py-1 text-sm [overflow-wrap:anywhere] ${
               complete ? 'text-content-muted line-through' : 'text-content'
             }`}
           >
@@ -790,6 +812,7 @@ function SubtaskRow({
       <div className="ml-6 min-w-0 border-l border-border-subtle pl-3">
         <InlineText
           value={node.title}
+          wrap
           ariaLabel={t('columns.title')}
           className={complete ? 'text-content-muted line-through' : ''}
           onCommit={(next) => {

@@ -13,8 +13,13 @@ export interface Shortcuts {
  * The guard below matters more than the shortcuts do. Almost every cell in this
  * app becomes an input on click, so firing `n` while someone is typing a task
  * title would be a constant, baffling interruption. Anything originating in an
- * editable element is ignored outright — except Escape, which must always work,
- * since it is how you get out of the thing you are typing in.
+ * editable element is ignored outright.
+ *
+ * That includes Escape. A field handles its own Escape — it abandons the edit —
+ * and that is all the key should do there. It used to reach this handler as
+ * well, so backing out of a half-typed title also closed the detail pane beside
+ * it: one keypress, two things undone, the second of them never asked for.
+ * Press it again, with nothing being edited, and the pane closes.
  */
 export function useKeyboardShortcuts({ onSearch, onNewTask, onEscape }: Shortcuts): void {
   useEffect(() => {
@@ -26,7 +31,7 @@ export function useKeyboardShortcuts({ onSearch, onNewTask, onEscape }: Shortcut
 
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
-        onEscape?.();
+        if (!isEditable(event.target)) onEscape?.();
         return;
       }
 
