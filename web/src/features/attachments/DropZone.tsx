@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 interface DropZoneProps {
   onFiles: (files: File[]) => void;
   children: ReactNode;
   className?: string;
-  /** Also accept files pasted from the clipboard while this zone is mounted. */
-  acceptPaste?: boolean;
   disabled?: boolean;
   /**
    * Something was dropped, but no file came with it.
@@ -53,11 +51,12 @@ export function classifyDrop(transfer: DataTransfer | null | undefined): DropOut
 }
 
 /**
- * A drop target that also accepts pasted files.
+ * A drop target.
  *
- * Paste matters more than it looks: taking a screenshot and pressing Ctrl+V is
- * the fastest way to attach evidence to a quality record, and it is the flow
- * people actually use when the alternative is save-to-disk-then-browse.
+ * Pasting is not handled here. It used to be, which tied Ctrl+V to this
+ * component being on screen: a screenshot could only be pasted once the detail
+ * pane was open. Paste is now listened for once, at the shell, and routed to
+ * whichever task the user is working in — see `usePasteToAttach`.
  *
  * Drag state is counted rather than toggled. `dragenter`/`dragleave` fire for
  * every descendant the pointer crosses, so a boolean flickers off the moment
@@ -67,36 +66,11 @@ export function DropZone({
   onFiles,
   children,
   className = '',
-  acceptPaste,
   disabled,
   onNothingUsable,
 }: DropZoneProps) {
   const [isOver, setIsOver] = useState(false);
   const depth = useRef(0);
-
-  const handleFiles = useCallback(
-    (list: FileList | null | undefined) => {
-      if (disabled === true || list === null || list === undefined) return;
-      const files = Array.from(list);
-      if (files.length > 0) onFiles(files);
-    },
-    [onFiles, disabled],
-  );
-
-  useEffect(() => {
-    if (acceptPaste !== true || disabled === true) return;
-
-    const onPaste = (event: ClipboardEvent): void => {
-      const items = event.clipboardData?.files;
-      if (items !== undefined && items.length > 0) {
-        event.preventDefault();
-        handleFiles(items);
-      }
-    };
-
-    window.addEventListener('paste', onPaste);
-    return () => window.removeEventListener('paste', onPaste);
-  }, [acceptPaste, disabled, handleFiles]);
 
   return (
     <div

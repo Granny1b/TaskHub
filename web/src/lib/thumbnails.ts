@@ -75,16 +75,3 @@ export async function generateThumbnail(
     bitmap.close();
   }
 }
-
-/**
- * A filename for a pasted screenshot.
- *
- * Clipboard images arrive as `image.png` or with no name at all, so a paste of
- * three screenshots would otherwise produce three identically-named
- * attachments. The timestamp makes them distinguishable in the list.
- */
-export function pastedFileName(contentType: string, at: Date = new Date()): string {
-  const extension = contentType === 'image/jpeg' ? 'jpg' : (contentType.split('/')[1] ?? 'png');
-  const stamp = at.toISOString().slice(0, 19).replace(/[:T]/g, '-');
-  return `skarmklipp-${stamp}.${extension}`;
-}

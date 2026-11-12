@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { TaskNode, TaskSummary } from '@taskhub/shared';
@@ -7,11 +8,12 @@ import { Button, IconButton } from '../../components/Button.js';
 import { EmptyState } from '../../components/EmptyState.js';
 import { CollapseIcon, GripIcon, InboxIcon } from '../../components/icons.js';
 import { TaskListSkeleton } from '../../components/Skeleton.js';
-import type { PatchNode, TaskFilter } from '../../lib/apiClient.js';
+import { api, type PatchNode, type TaskFilter } from '../../lib/apiClient.js';
 import type { DragItemData } from '../../lib/dragTypes.js';
 import {
   useAddChild,
   useCreateTask,
+  queryKeys,
   usePatchNode,
   useRemoveChild,
   useTask,
@@ -29,6 +31,11 @@ interface TaskListViewProps {
   compact: boolean;
   selectedTaskId: string | null;
   onSelectTask: (id: string) => void;
+  /**
+   * True while the detail pane is open beside the list. Clicking into another
+   * row's text then moves the pane to that row's task.
+   */
+  followFocus?: boolean;
   /** The list a new task is created in. */
   activeListId: string | null;
   /**
@@ -63,6 +70,7 @@ export function TaskListView({
   compact,
   selectedTaskId,
   onSelectTask,
+  followFocus = false,
   activeListId,
   createSignal = 0,
   collapseSignal = 0,
@@ -246,6 +254,7 @@ export function TaskListView({
                     summary={summary}
                     expanded={inlineSubtasks && expanded.has(summary.id)}
                     selected={selectedTaskId === summary.id}
+                    followFocus={followFocus}
                     gridTemplate={template}
                     compact={compact}
                     rowDensity={preferences.rowDensity}
@@ -324,6 +333,7 @@ function TaskRowContainer({
   summary,
   expanded,
   selected,
+  followFocus,
   gridTemplate,
   compact,
   onToggleExpand,
@@ -339,6 +349,7 @@ function TaskRowContainer({
   summary: TaskSummary;
   expanded: boolean;
   selected: boolean;
+  followFocus: boolean;
   gridTemplate: string;
   compact: boolean;
   onToggleExpand: () => void;
@@ -352,6 +363,7 @@ function TaskRowContainer({
   onOpenPercentSheet?: ((node: TaskNode) => void) | undefined;
 }) {
   const { t } = useTranslation();
+  const client = useQueryClient();
   /*
     A collapsed, unselected row does not open its blob — that is the whole point
     of the metadata projection. But editing Kommentarer needs the full text, not
@@ -419,6 +431,24 @@ function TaskRowContainer({
       }
       onToggleExpand={onToggleExpand}
       onSelect={onSelect}
+      onFocusField={followFocus && !selected ? onSelect : undefined}
+      /*
+        Start loading the task when the pointer reaches the button that opens
+        it. The click lands a few hundred milliseconds later, by which time the
+        document is usually already here and the pane opens filled in rather
+        than as a skeleton. One small GET, and only on a clear signal of intent
+        — hovering the row itself would fetch every task the pointer crosses.
+      */
+      onOpenIntent={
+        selected
+          ? undefined
+          : () =>
+              void client.prefetchQuery({
+                queryKey: queryKeys.task(summary.id),
+                queryFn: () => api.getTask(summary.id),
+                staleTime: 5_000,
+              })
+      }
       onPatch={(nodeId, patch) => onPatch(nodeId, patch, etag)}
       onAddChild={(title) => onAddChild(title, etag)}
       onRemoveChild={(childId) => onRemoveChild(childId, etag)}

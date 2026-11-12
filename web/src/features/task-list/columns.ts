@@ -61,15 +61,20 @@ export const COLUMNS: readonly ColumnDefinition[] = [
    * share. Making them flexible rather than fixed is what stops a wide screen
    * truncating titles while leaving whitespace elsewhere. Resizing applies to
    * the fixed columns; these two follow the window.
+   *
+   * The title's share and floor both went up when it started wrapping instead
+   * of truncating. At 160px a sentence-long title ran to seven lines of two
+   * words each; Kommentarer is a one-line preview either way, so it gives up
+   * width more cheaply than the title gives up height.
    */
   {
     id: 'title',
     labelKey: 'columns.title',
     defaultWidth: 300,
-    minWidth: 160,
+    minWidth: 220,
     resizable: false,
     flexible: true,
-    flexGrow: 1.6,
+    flexGrow: 2.4,
   },
   /**
    * Kommentarer absorbs the slack. It is the free-text field, so extra width

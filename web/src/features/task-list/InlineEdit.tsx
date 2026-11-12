@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 interface InlineTextProps {
   value: string;
@@ -10,6 +10,11 @@ interface InlineTextProps {
   /** Renders bold, for main task titles. */
   emphasis?: boolean;
   multiline?: boolean;
+  /**
+   * Show the whole value on as many lines as it needs, instead of cutting it
+   * off with an ellipsis. For task titles, which are the thing people read.
+   */
+  wrap?: boolean;
   /**
    * Mount straight into edit mode.
    *
@@ -36,8 +41,19 @@ interface InlineTextProps {
  * cell's own hover changed nothing visible. An inset panel with a border reads
  * as somewhere to type against either row state, in both themes.
  */
-export const FIELD =
-  'w-full min-h-6 truncate rounded border border-transparent px-1 py-0.5 text-left transition-colors duration-150 hover:border-border-strong hover:bg-surface disabled:cursor-not-allowed disabled:hover:border-transparent';
+const FIELD_BASE =
+  'w-full min-h-6 rounded border border-transparent px-1 py-0.5 text-left transition-colors duration-150 hover:border-border-strong hover:bg-surface disabled:cursor-not-allowed disabled:hover:border-transparent';
+
+export const FIELD = `${FIELD_BASE} truncate`;
+
+/**
+ * The same field, showing all of its text.
+ *
+ * `overflow-wrap: anywhere` rather than `break-words`, because a grid cell
+ * sizes itself by its longest unbreakable run: a pasted URL or a part number
+ * with no spaces would otherwise push the column wider instead of wrapping.
+ */
+export const FIELD_WRAP = `${FIELD_BASE} whitespace-normal [overflow-wrap:anywhere]`;
 
 /**
  * Click-to-edit text, used for Uppgift and Kommentarer.
@@ -56,6 +72,7 @@ export function InlineText({
   disabled,
   emphasis,
   multiline,
+  wrap,
   autoEdit,
 }: InlineTextProps) {
   const [editing, setEditing] = useState(autoEdit === true);
@@ -68,9 +85,34 @@ export function InlineText({
     if (!editing) setDraft(value);
   }, [value, editing]);
 
+  /*
+    A wrapping editor grows with its text.
+
+    Measured rather than left to `rows`, so the editor is exactly as tall as the
+    text it replaced and the row does not jump when a title is clicked. The
+    caret goes to the end on entry: a textarea focuses with it at the start,
+    which is the wrong end for the usual edit — adding a few words.
+  */
+  const growing = editing && wrap === true && multiline !== true;
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!growing || element === null) return;
+    element.style.height = 'auto';
+    // +2 for the border, which `scrollHeight` leaves out.
+    element.style.height = `${element.scrollHeight + 2}px`;
+  }, [growing, draft]);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (growing && element !== null) {
+      element.setSelectionRange(element.value.length, element.value.length);
+    }
+  }, [growing]);
+
   const commit = (): void => {
     setEditing(false);
-    const trimmed = multiline === true ? draft : draft.trim();
+    // A wrapped title is still one line of text: a pasted line break becomes a
+    // space rather than a title that silently spans two lines.
+    const trimmed = multiline === true ? draft : draft.replace(/\s*[\r\n]+\s*/g, ' ').trim();
     if (trimmed !== value) onCommit(trimmed);
   };
 
@@ -92,7 +134,7 @@ export function InlineText({
           reader announced "button", and nothing could address it by name.
         */
         aria-label={ariaLabel}
-        className={`${FIELD} ${
+        className={`${wrap === true ? FIELD_WRAP : FIELD} ${
           emphasis === true ? 'font-semibold text-content' : 'text-content'
         } ${className}`}
         title={value.length > 0 ? value : placeholder}
@@ -118,8 +160,35 @@ export function InlineText({
     value: draft,
     'aria-label': ariaLabel,
     onBlur: commit,
-    className: `w-full rounded border border-accent bg-surface px-1 py-0.5 text-sm text-content outline-none ${className}`,
+    // A wrapping editor keeps the size of the text it replaces, so entering it
+    // neither reflows the lines nor changes the row's height.
+    className: `w-full rounded border border-accent bg-surface px-1 py-0.5 text-content outline-none ${
+      wrap === true ? '' : 'text-sm'
+    } ${emphasis === true ? 'font-semibold' : ''} ${className}`,
   };
+
+  if (wrap === true && multiline !== true) {
+    return (
+      <textarea
+        {...shared}
+        ref={ref as React.RefObject<HTMLTextAreaElement>}
+        rows={1}
+        className={`${shared.className} block resize-none overflow-hidden [overflow-wrap:anywhere]`}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          // Enter commits, exactly as in the single-line editor this stands in
+          // for. A title has no line breaks to type.
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            commit();
+          } else if (event.key === 'Escape') {
+            event.preventDefault();
+            cancel();
+          }
+        }}
+      />
+    );
+  }
 
   if (multiline === true) {
     return (

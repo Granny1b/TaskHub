@@ -5,11 +5,6 @@ import { ALLOWED_EXTENSIONS, type Attachment } from '@taskhub/shared';
 import { Button } from '../../components/Button.js';
 import { PaperclipIcon, PlusIcon } from '../../components/icons.js';
 import { api } from '../../lib/apiClient.js';
-import {
-  clearPickerOpen,
-  consumePickerInterrupted,
-  markPickerOpen,
-} from '../../lib/pickerWatch.js';
 import { queryKeys } from '../../lib/queries.js';
 import { AttachmentGrid } from './AttachmentGrid.js';
 import { CameraSheet } from './CameraSheet.js';
@@ -53,7 +48,8 @@ interface AttachmentsSectionProps {
  *
  * Three ways in, because the useful one differs by context — drag a file from
  * Explorer at a desk, paste a screenshot while writing up a fault, photograph
- * the part on the shop floor.
+ * the part on the shop floor. Paste is the one not wired up here: it is caught
+ * at the shell so it works before this panel exists (`usePasteToAttach`).
  */
 export function AttachmentsSection({
   taskId,
@@ -66,7 +62,7 @@ export function AttachmentsSection({
   const { uploads, upload, cancel, dismiss } = useUploads(taskId);
 
   const fileInput = useRef<HTMLInputElement>(null);
-  const cameraInput = useRef<HTMLInputElement>(null);
+  const section = useRef<HTMLElement>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
   /**
    * Shown when a drop carried nothing the browser will hand over — in practice,
@@ -74,16 +70,23 @@ export function AttachmentsSection({
    * phrased as what to do instead rather than as a failure.
    */
   const [dropHint, setDropHint] = useState(false);
-  /**
-   * True when the page was reloaded while a picker was open — the phone killed
-   * the tab to give the camera app memory, and the photo never arrived.
-   */
-  const [interrupted, setInterrupted] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
 
+  /*
+    Bring a new upload into view.
+
+    A paste can start an upload while this section is scrolled out of sight
+    below the task's fields, and then nothing visibly happens. `nearest` means
+    it does not move at all when the section is already on screen.
+  */
+  const uploadCount = uploads.length;
+  const seenUploads = useRef(0);
   useEffect(() => {
-    if (consumePickerInterrupted()) setInterrupted(true);
-  }, []);
+    if (uploadCount > seenUploads.current) {
+      section.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+    seenUploads.current = uploadCount;
+  }, [uploadCount]);
 
   /**
    * Take what a picker handed back, and say so when it handed back nothing.
@@ -93,10 +96,8 @@ export function AttachmentsSection({
    * that produced "nothing happens when I take a photo".
    */
   const handleChosen = (files: FileList | null): void => {
-    clearPickerOpen();
     setDropHint(false);
     setRemoveError(null);
-    setInterrupted(false);
 
     const chosen = files === null ? [] : Array.from(files);
     if (chosen.length === 0) {
@@ -123,7 +124,7 @@ export function AttachmentsSection({
   };
 
   return (
-    <section className="mt-6">
+    <section ref={section} className="mt-6">
       <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wide text-content-muted">
         {t('columns.attachments')}
         {attachments.length > 0 ? (
@@ -139,16 +140,6 @@ export function AttachmentsSection({
         </p>
       ) : null}
 
-      {/* The whole section is a drop target, and accepts pasted screenshots. */}
-      {interrupted ? (
-        <p
-          className="mb-2 rounded-md border border-border-subtle bg-surface-raised px-2.5 py-2 text-xs text-content-muted"
-          role="status"
-        >
-          {t('attachments.pickerInterrupted')}
-        </p>
-      ) : null}
-
       {dropHint ? (
         <p className="mb-2 text-xs text-content-muted" role="status">
           {t('attachments.noFilesInDrop')}
@@ -157,19 +148,12 @@ export function AttachmentsSection({
 
       {cameraOpen ? (
         <CameraSheet
-          onCapture={(file) => {
-            clearPickerOpen();
-            upload([file]);
-          }}
-          onClose={() => {
-            clearPickerOpen();
-            setCameraOpen(false);
-          }}
+          onCapture={(file) => upload([file])}
+          onClose={() => setCameraOpen(false)}
           onFallback={() => {
             // No camera to offer. Send them to the picker that works rather
             // than leaving them looking at an apology.
             setCameraOpen(false);
-            markPickerOpen();
             fileInput.current?.click();
           }}
         />
@@ -181,7 +165,6 @@ export function AttachmentsSection({
           upload(files);
         }}
         onNothingUsable={() => setDropHint(true)}
-        acceptPaste
       >
         {attachments.length > 0 ? (
           <AttachmentGrid
@@ -193,7 +176,9 @@ export function AttachmentsSection({
         ) : (
           <div className="rounded-md border border-dashed border-border-strong px-3 py-6 text-center">
             <PaperclipIcon className="mx-auto h-5 w-5 text-content-muted" />
-            <p className="mt-2 text-sm text-content-muted">{t('attachments.drop')}</p>
+            <p className="mt-2 text-sm text-content-muted">
+              {compact ? t('attachments.drop') : t('attachments.dropOrPaste')}
+            </p>
             <p className="mt-0.5 text-xs text-content-muted">max {MAX_UPLOAD_LABEL}</p>
           </div>
         )}
@@ -203,10 +188,7 @@ export function AttachmentsSection({
             size="sm"
             variant="secondary"
             className={compact ? 'h-11 flex-1' : ''}
-            onClick={() => {
-              markPickerOpen();
-              fileInput.current?.click();
-            }}
+            onClick={() => fileInput.current?.click()}
           >
             <PlusIcon className="h-4 w-4" />
             {t('attachments.add')}
@@ -219,17 +201,7 @@ export function AttachmentsSection({
               size="sm"
               variant="secondary"
               className="h-11 flex-1"
-              onClick={() => {
-                /*
-                  Marked exactly like a file picker, because the same thing can
-                  happen: opening a camera stream is enough for the phone to
-                  destroy this tab, and without the marker the page comes back
-                  with no idea it ever tried.
-                */
-                markPickerOpen();
-                setInterrupted(false);
-                setCameraOpen(true);
-              }}
+              onClick={() => setCameraOpen(true)}
             >
               {t('attachments.camera')}
             </Button>
@@ -245,27 +217,6 @@ export function AttachmentsSection({
           onChange={(event) => {
             handleChosen(event.target.files);
             // Reset, so selecting the same file twice in a row still fires.
-            event.target.value = '';
-          }}
-        />
-
-        <input
-          ref={cameraInput}
-          type="file"
-          /*
-            No `capture` attribute, deliberately.
-
-            `capture="environment"` sends the browser straight into the camera
-            app, and on this shop's phones that round trip never came back with
-            a file — the picker that works is the one without it. Plain
-            `accept="image/*"` lets the OS offer its own chooser, which puts
-            Camera at the top on Android and shows "Take Photo" first on iOS.
-            One tap more, and it actually returns a photograph.
-          */
-          accept="image/*"
-          className="hidden"
-          onChange={(event) => {
-            handleChosen(event.target.files);
             event.target.value = '';
           }}
         />

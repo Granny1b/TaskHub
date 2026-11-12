@@ -10,10 +10,16 @@
  *
  * A header is a few hundred bytes and says the same thing with certainty.
  *
- * Note what these numbers are *not*: they ignore EXIF orientation, so a
- * portrait photograph stored as landscape pixels reports landscape. That is
- * harmless here — the caller only needs a box to fit the image into, and a
- * rotated box has the same longest edge either way.
+ * The numbers are the size the picture is *displayed* at, which is not always
+ * the size it is stored at. A phone held upright commonly saves landscape
+ * pixels plus an EXIF note saying "rotate this a quarter turn", and the decoder
+ * is asked to honour that note. An earlier version reported the stored size and
+ * called the difference harmless; it was not. The caller passes these numbers
+ * to the decoder as an exact target, the decoder applies them *after* rotating,
+ * and a 3000×4000 portrait was squeezed into a 2560×1920 landscape box — every
+ * upright photograph came out squashed, in the upload and in its thumbnail.
+ * So the EXIF orientation is read here and the sides are swapped when it calls
+ * for a quarter turn.
  */
 
 export interface ImageSize {
@@ -32,6 +38,10 @@ export interface ImageSize {
 function jpegSize(view: DataView): ImageSize | null {
   if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return null;
 
+  // EXIF comes before the frame header, so by the time the size is found the
+  // orientation, if there is one, has already been seen.
+  let quarterTurned = false;
+
   let offset = 2;
   while (offset + 9 < view.byteLength) {
     if (view.getUint8(offset) !== 0xff) {
@@ -47,7 +57,9 @@ function jpegSize(view: DataView): ImageSize | null {
       (marker >= 0xcd && marker <= 0xcf);
 
     if (isFrameHeader) {
-      return { height: view.getUint16(offset + 5), width: view.getUint16(offset + 7) };
+      const height = view.getUint16(offset + 5);
+      const width = view.getUint16(offset + 7);
+      return quarterTurned ? { width: height, height: width } : { width, height };
     }
 
     // Markers without a payload: padding, start-of-image, restart markers.
@@ -58,7 +70,49 @@ function jpegSize(view: DataView): ImageSize | null {
 
     const length = view.getUint16(offset + 2);
     if (length < 2) return null;
+
+    if (marker === 0xe1) {
+      const orientation = exifOrientation(view, offset + 4, length - 2);
+      // 5–8 are the four orientations that include a quarter turn.
+      if (orientation !== null) quarterTurned = orientation >= 5 && orientation <= 8;
+    }
+
     offset += 2 + length;
+  }
+
+  return null;
+}
+
+/**
+ * The EXIF orientation (1–8) from an APP1 payload, or null when it has none.
+ *
+ * The payload is `Exif\0\0` followed by a TIFF structure: a byte-order mark,
+ * the offset of the first directory, then 12-byte entries. Orientation is tag
+ * 0x0112 in that first directory, stored inline as a 16-bit value. Anything
+ * that does not fit that shape — XMP also travels in APP1 — is simply not EXIF.
+ */
+function exifOrientation(view: DataView, start: number, length: number): number | null {
+  const end = Math.min(start + length, view.byteLength);
+  if (start + 14 > end) return null;
+  // "Exif" then two NULs.
+  if (view.getUint32(start) !== 0x45786966 || view.getUint16(start + 4) !== 0) return null;
+
+  const tiff = start + 6;
+  const order = view.getUint16(tiff);
+  if (order !== 0x4949 && order !== 0x4d4d) return null;
+  const little = order === 0x4949;
+
+  const directory = tiff + view.getUint32(tiff + 4, little);
+  if (directory + 2 > end) return null;
+
+  const entries = view.getUint16(directory, little);
+  for (let index = 0; index < entries; index += 1) {
+    const entry = directory + 2 + index * 12;
+    if (entry + 12 > end) return null;
+    if (view.getUint16(entry, little) === 0x0112) {
+      const value = view.getUint16(entry + 8, little);
+      return value >= 1 && value <= 8 ? value : null;
+    }
   }
 
   return null;

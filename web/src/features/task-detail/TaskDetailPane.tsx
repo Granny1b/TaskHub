@@ -76,13 +76,21 @@ export function TaskDetailPane({ taskId, onClose, asRoute }: TaskDetailPaneProps
       className={`flex h-full w-full flex-col bg-surface ${asRoute === true ? '' : 'border-l border-border-subtle'}`}
       aria-label={root.title}
     >
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border-subtle px-3">
+      {/* Grows to two lines for a long title rather than cutting it off. The
+          full text is in the field directly below; this is the heading that
+          stays put while the rest scrolls. */}
+      <header className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border-subtle px-3 py-1.5">
         <Checkbox
           checked={isTaskComplete(root)}
           label={t('columns.complete')}
           onChange={(next) => patchNode(undefined, { isComplete: next })}
         />
-        <span className="flex-1 truncate text-sm font-medium text-content">{root.title}</span>
+        <span
+          className="line-clamp-2 min-w-0 flex-1 text-sm font-medium text-content [overflow-wrap:anywhere]"
+          title={root.title}
+        >
+          {root.title}
+        </span>
         <IconButton label={t('common.close')} onClick={onClose} touchTarget={asRoute === true}>
           <CloseIcon className="h-4 w-4" />
         </IconButton>
@@ -93,6 +101,7 @@ export function TaskDetailPane({ taskId, onClose, asRoute }: TaskDetailPaneProps
           <InlineText
             value={root.title}
             emphasis
+            wrap
             ariaLabel={t('columns.title')}
             onCommit={(next) => {
               if (next.length > 0) patchNode(undefined, { title: next });
@@ -189,7 +198,7 @@ export function TaskDetailPane({ taskId, onClose, asRoute }: TaskDetailPaneProps
                     onChange={(next) => patchNode(child.id, { isComplete: next })}
                   />
                   <span
-                    className={`flex-1 truncate text-sm ${
+                    className={`min-w-0 flex-1 text-sm [overflow-wrap:anywhere] ${
                       isTaskComplete(child) ? 'text-content-muted line-through' : 'text-content'
                     }`}
                   >

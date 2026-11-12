@@ -16,6 +16,46 @@ function jpeg(width: number, height: number, padding = 0): ArrayBuffer {
   return new Uint8Array(parts).buffer;
 }
 
+/** An APP1 segment carrying nothing but an EXIF orientation. */
+function exifSegment(orientation: number, littleEndian = false): number[] {
+  const u16 = (value: number): number[] =>
+    littleEndian ? [value & 0xff, value >> 8] : [value >> 8, value & 0xff];
+  const u32 = (value: number): number[] =>
+    littleEndian ? [value & 0xff, 0, 0, 0] : [0, 0, 0, value & 0xff];
+
+  const tiff = [
+    ...(littleEndian ? [0x49, 0x49] : [0x4d, 0x4d]),
+    ...u16(0x2a),
+    ...u32(8),
+    ...u16(1),
+    ...u16(0x0112),
+    ...u16(3),
+    ...u32(1),
+    ...u16(orientation),
+    0,
+    0,
+    ...u32(0),
+  ];
+  const payload = [0x45, 0x78, 0x69, 0x66, 0, 0, ...tiff];
+  const length = payload.length + 2;
+  return [0xff, 0xe1, length >> 8, length & 0xff, ...payload];
+}
+
+/** A JPEG whose pixels are stored one way and displayed another. */
+function orientedJpeg(
+  width: number,
+  height: number,
+  orientation: number,
+  littleEndian = false,
+): ArrayBuffer {
+  const plain = Array.from(new Uint8Array(jpeg(width, height)));
+  return new Uint8Array([
+    ...plain.slice(0, 2),
+    ...exifSegment(orientation, littleEndian),
+    ...plain.slice(2),
+  ]).buffer;
+}
+
 function png(width: number, height: number): ArrayBuffer {
   const bytes = new Uint8Array(32);
   bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
@@ -39,6 +79,23 @@ describe('sizeFromHeader', () => {
     const bytes = new Uint8Array(jpeg(1600, 1200));
     bytes[3 + 0] = 0xc2; // SOF2 rather than SOF0
     expect(sizeFromHeader(bytes.buffer)).toEqual({ width: 1600, height: 1200 });
+  });
+
+  it('reports the displayed size of a photo stored on its side', () => {
+    // A phone held upright: landscape pixels plus "rotate a quarter turn". The
+    // decoder honours the rotation, so the box it is given has to as well —
+    // otherwise the portrait is squeezed into a landscape frame.
+    expect(sizeFromHeader(orientedJpeg(4000, 3000, 6))).toEqual({ width: 3000, height: 4000 });
+    expect(sizeFromHeader(orientedJpeg(4000, 3000, 8, true))).toEqual({
+      width: 3000,
+      height: 4000,
+    });
+  });
+
+  it('leaves the size alone for orientations without a quarter turn', () => {
+    expect(sizeFromHeader(orientedJpeg(4000, 3000, 1))).toEqual({ width: 4000, height: 3000 });
+    // Upside down is still landscape.
+    expect(sizeFromHeader(orientedJpeg(4000, 3000, 3))).toEqual({ width: 4000, height: 3000 });
   });
 
   it('reads a PNG', () => {

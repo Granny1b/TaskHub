@@ -7,6 +7,7 @@ import {
 } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 import {
+  COMMENTS_PREVIEW_LENGTH,
   createContext,
   reorderChildren,
   setComplete,
@@ -88,6 +89,39 @@ function cacheTask(client: QueryClient, saved: WithETag<TaskDocument>): void {
 /** The list view is a projection of tasks, so any task write invalidates it. */
 function invalidateTaskLists(client: QueryClient): void {
   void client.invalidateQueries({ queryKey: ['tasks'] });
+}
+
+type SummaryCaches = [readonly unknown[], TaskSummary[] | undefined][];
+
+/** Rewrite one task's row in every cached listing that holds it. */
+function updateSummary(
+  client: QueryClient,
+  taskId: string,
+  change: (summary: TaskSummary) => TaskSummary,
+): void {
+  client.setQueriesData<TaskSummary[]>({ queryKey: ['tasks'] }, (summaries) =>
+    summaries?.map((summary) => (summary.id === taskId ? change(summary) : summary)),
+  );
+}
+
+/**
+ * What a patch to a main task does to its row in the listing.
+ *
+ * Only the fields the listing carries verbatim. Percent and the subtask counts
+ * are derived on the server from the whole document, which a collapsed row has
+ * not loaded, so they are left for the refetch rather than guessed at.
+ */
+export function predictSummary(summary: TaskSummary, patch: PatchNode): TaskSummary {
+  return {
+    ...summary,
+    ...(patch.title !== undefined ? { title: patch.title } : {}),
+    ...(patch.date !== undefined ? { date: patch.date } : {}),
+    ...(patch.comments !== undefined
+      ? { commentsPreview: patch.comments.slice(0, COMMENTS_PREVIEW_LENGTH) }
+      : {}),
+    ...(patch.isComplete !== undefined ? { isComplete: patch.isComplete } : {}),
+    ...(patch.completedDate !== undefined ? { completedDate: patch.completedDate } : {}),
+  };
 }
 
 /* -------------------------------------------------------------------------- */
@@ -478,8 +512,27 @@ export function usePatchNode() {
       const key = queryKeys.task(variables.taskId);
       await client.cancelQueries({ queryKey: key });
 
+      /*
+        The listing is predicted as well as the document.
+
+        A collapsed row has never loaded its document, so there was nothing
+        above to predict against — and that is most rows. Ticking one, or
+        retitling it, showed the old value until the write *and* the listing
+        refetch had both come back: the checkbox visibly ignored the click for
+        the length of two round trips. The row is drawn from the listing, so
+        the listing is what has to move.
+      */
+      let previousSummaries: SummaryCaches | undefined;
+      if (variables.childId === undefined) {
+        await client.cancelQueries({ queryKey: ['tasks'] });
+        previousSummaries = client.getQueriesData<TaskSummary[]>({ queryKey: ['tasks'] });
+        updateSummary(client, variables.taskId, (summary) =>
+          predictSummary(summary, variables.patch),
+        );
+      }
+
       const previous = client.getQueryData<WithETag<TaskDocument>>(key);
-      if (previous === undefined) return { previous: undefined };
+      if (previous === undefined) return { previous: undefined, previousSummaries };
 
       const nodeId = variables.childId ?? previous.data.root.id;
       const predicted = predictPatch(previous.data, nodeId, variables.patch);
@@ -487,7 +540,7 @@ export function usePatchNode() {
         client.setQueryData(key, { data: predicted, etag: previous.etag });
       }
 
-      return { previous };
+      return { previous, previousSummaries };
     },
 
     onError: (_error, variables, context) => {
@@ -496,6 +549,10 @@ export function usePatchNode() {
       if (context?.previous !== undefined) {
         client.setQueryData(queryKeys.task(variables.taskId), context.previous);
       }
+      for (const [key, summaries] of context?.previousSummaries ?? []) {
+        client.setQueryData(key, summaries);
+      }
+      invalidateTaskLists(client);
     },
 
     mutationFn: async (variables: PatchVariables): Promise<WithETag<TaskDocument>> => {
@@ -541,6 +598,13 @@ export function usePatchNode() {
 
     onSuccess: (saved) => {
       cacheTask(client, saved);
+      /*
+        Hand the row its new ETag now. A collapsed row writes with the token
+        from the listing, and until the refetch lands that token is the one
+        this write just replaced — so a second quick edit (tick, then fix the
+        date) was guaranteed a 409 and a recovery round trip.
+      */
+      updateSummary(client, saved.data.id, (summary) => ({ ...summary, etag: saved.etag }));
       invalidateTaskLists(client);
       setConflict(null);
     },
