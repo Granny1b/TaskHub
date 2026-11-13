@@ -5,6 +5,7 @@ import { IconButton } from '../../components/Button.js';
 import { CheckIcon, CollapseIcon, MenuIcon, PlusIcon, SearchIcon } from '../../components/icons.js';
 import type { TaskFilter } from '../../lib/apiClient.js';
 import { readSelection, resolveSelection, writeSelection } from '../../lib/lastSelection.js';
+import { usePreferences } from '../../lib/preferences.js';
 import { useLists } from '../../lib/queries.js';
 import { searchShortcutLabel } from '../../lib/shortcutLabel.js';
 import { useIsDesktop } from '../../lib/useMediaQuery.js';
@@ -63,13 +64,9 @@ export function AppShell() {
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [search, setSearch] = useState('');
-  /**
-   * Whether finished work stays in the list.
-   *
-   * Defaults to showing everything, which is what the workbook did — hiding
-   * rows on day one would look like data loss to someone migrating.
-   */
-  const [showCompleted, setShowCompleted] = useState(true);
+  // Whether finished work stays in the list. A stored preference, so the
+  // choice survives a reload (preferences.ts).
+  const [{ showCompleted }, setPreferences] = usePreferences();
   const [newTaskNonce, setNewTaskNonce] = useState(0);
   const [collapseNonce, setCollapseNonce] = useState(0);
   // Lives here rather than in the list because the button that acts on it does.
@@ -221,7 +218,7 @@ export function AppShell() {
               <button
                 type="button"
                 aria-pressed={!showCompleted}
-                onClick={() => setShowCompleted((value) => !value)}
+                onClick={() => setPreferences({ showCompleted: !showCompleted })}
                 title={showCompleted ? t('filters.hideCompleted') : t('filters.showCompleted')}
                 className={`ml-auto hidden h-8 shrink-0 items-center gap-1.5 rounded-md border px-2 text-xs transition-colors duration-150 sm:inline-flex ${
                   showCompleted

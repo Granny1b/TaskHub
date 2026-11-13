@@ -40,6 +40,13 @@ export interface Preferences {
   readonly showComments: boolean;
   /** Whether photographs are shrunk before upload. */
   readonly imageQuality: ImageQuality;
+  /**
+   * Whether finished tasks stay in the list. Toggled from the header rather
+   * than the settings dialog, but remembered the same way: someone who works
+   * with finished tasks hidden should not have to hide them again after every
+   * reload.
+   */
+  readonly showCompleted: boolean;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
@@ -51,6 +58,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   // Compressing by default is the choice that keeps the bill under €2/month
   // without anyone having to know the setting exists.
   imageQuality: 'balanced',
+  // Showing everything is what the workbook did — hiding rows on day one would
+  // look like data loss to someone migrating.
+  showCompleted: true,
 };
 
 const STORAGE_KEY = 'taskhub.preferences';
@@ -90,6 +100,10 @@ export function readPreferences(): Preferences {
         stored.imageQuality === 'original' || stored.imageQuality === 'balanced'
           ? stored.imageQuality
           : DEFAULT_PREFERENCES.imageQuality,
+      showCompleted:
+        typeof stored.showCompleted === 'boolean'
+          ? stored.showCompleted
+          : DEFAULT_PREFERENCES.showCompleted,
     };
   } catch {
     return DEFAULT_PREFERENCES;
