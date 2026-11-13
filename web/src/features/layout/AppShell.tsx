@@ -4,6 +4,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { IconButton } from '../../components/Button.js';
 import { CheckIcon, CollapseIcon, MenuIcon, PlusIcon, SearchIcon } from '../../components/icons.js';
 import type { TaskFilter } from '../../lib/apiClient.js';
+import { readSelection, resolveSelection, writeSelection } from '../../lib/lastSelection.js';
+import { usePreferences } from '../../lib/preferences.js';
+import { useLists } from '../../lib/queries.js';
 import { searchShortcutLabel } from '../../lib/shortcutLabel.js';
 import { useIsDesktop } from '../../lib/useMediaQuery.js';
 import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts.js';
@@ -42,17 +45,28 @@ export function AppShell() {
   const navigate = useNavigate();
   const params = useParams<{ taskId?: string }>();
 
-  const [selection, setSelection] = useState<ListSelection>({ kind: 'all' });
+  /*
+    The section is remembered across reloads (lastSelection.ts).
+
+    What is *stored* is what the user picked; what is *shown* is that checked
+    against the lists that exist, so a list deleted elsewhere falls back to
+    "all" instead of opening as an empty page. Reading the lists here costs no
+    extra request — the panel already asks for them, and the cache is shared.
+  */
+  const [chosen, setChosen] = useState<ListSelection>(readSelection);
+  const lists = useLists();
+  const listIds = useMemo(() => lists.data?.data.map((list) => list.id), [lists.data]);
+  const selection = useMemo(() => resolveSelection(chosen, listIds), [chosen, listIds]);
+  const setSelection = useCallback((next: ListSelection) => {
+    setChosen(next);
+    writeSelection(next);
+  }, []);
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [search, setSearch] = useState('');
-  /**
-   * Whether finished work stays in the list.
-   *
-   * Defaults to showing everything, which is what the workbook did — hiding
-   * rows on day one would look like data loss to someone migrating.
-   */
-  const [showCompleted, setShowCompleted] = useState(true);
+  // Whether finished work stays in the list. A stored preference, so the
+  // choice survives a reload (preferences.ts).
+  const [{ showCompleted }, setPreferences] = usePreferences();
   const [newTaskNonce, setNewTaskNonce] = useState(0);
   const [collapseNonce, setCollapseNonce] = useState(0);
   // Lives here rather than in the list because the button that acts on it does.
@@ -204,7 +218,7 @@ export function AppShell() {
               <button
                 type="button"
                 aria-pressed={!showCompleted}
-                onClick={() => setShowCompleted((value) => !value)}
+                onClick={() => setPreferences({ showCompleted: !showCompleted })}
                 title={showCompleted ? t('filters.hideCompleted') : t('filters.showCompleted')}
                 className={`ml-auto hidden h-8 shrink-0 items-center gap-1.5 rounded-md border px-2 text-xs transition-colors duration-150 sm:inline-flex ${
                   showCompleted

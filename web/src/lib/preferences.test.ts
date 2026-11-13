@@ -32,6 +32,13 @@ describe('readPreferences', () => {
     expect(readPreferences().subtaskDisplay).toBe('detail');
   });
 
+  it('remembers that finished tasks are hidden', () => {
+    // Shown by default; once hidden, it has to still be hidden after a reload.
+    expect(readPreferences().showCompleted).toBe(true);
+    setPreferences({ showCompleted: false });
+    expect(readPreferences().showCompleted).toBe(false);
+  });
+
   it('keeps the other preferences when one is updated', () => {
     setPreferences({ showComments: false });
     setPreferences({ rowDensity: 'comfortable' });
