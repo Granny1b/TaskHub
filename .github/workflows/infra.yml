@@ -1,0 +1,41 @@
+name: Infra
+
+# The Bicep templates are checked when they change, and only then.
+#
+# This was a job in ci.yml and ran on every push, spending a runner to
+# recompile templates that almost no change touches. Nothing deploys from here:
+# infrastructure is applied by hand with infra/deploy.ps1, so this exists to
+# catch a template error at review time rather than at deploy time.
+#
+# If main ever gets a branch protection rule, do not make "Validate Bicep" a
+# required check: a workflow filtered by path never reports on a pull request
+# that leaves infra/ alone, and a required check that never reports blocks the
+# merge.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/infra.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: infra-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate-infra:
+    name: Validate Bicep
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and lint Bicep
+        run: |
+          az bicep install
+          az bicep build --file infra/main.bicep --outfile /tmp/main.json
