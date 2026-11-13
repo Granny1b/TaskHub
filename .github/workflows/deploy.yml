@@ -1,8 +1,22 @@
 name: Deploy
 
+# Every merge to main deploys, unless it cannot have changed what is deployed.
+#
+# Documentation and the Bicep templates are not part of the artefact: the site
+# is web/dist plus the staged API, and infrastructure is applied separately by
+# hand (infra/deploy.ps1). A merge that touches only those would verify, build
+# and upload a byte-identical app. A change that touches anything else as well
+# still deploys — `paths-ignore` skips a run only when *every* changed file
+# matches.
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'infra/**'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/infra.yml'
   workflow_dispatch:
 
 # One deployment at a time, and never cancel one midway — a half-uploaded app is

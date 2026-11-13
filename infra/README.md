@@ -51,7 +51,9 @@ az staticwebapp secrets list --name swa-taskhub-prod --query "properties.apiKey"
 ```
 
 Add that value as a repository secret named `AZURE_STATIC_WEB_APPS_API_TOKEN`.
-`.github/workflows/deploy.yml` then deploys on every push to `main`.
+`.github/workflows/deploy.yml` then deploys on every push to `main` that changes
+the app — a merge touching only documentation or `infra/` is skipped, since
+neither is part of what gets uploaded.
 
 **2. Confirm the allowlist is set.**
 

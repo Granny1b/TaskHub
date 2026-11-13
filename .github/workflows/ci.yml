@@ -1,12 +1,25 @@
 name: CI
 
+# Pull requests only.
+#
+# This used to run on every push to every branch as well, which did the same
+# work twice in the two places it mattered:
+#
+#  - A push to a branch with an open pull request fired both triggers. They land
+#    in different concurrency groups (refs/heads/x and refs/pull/N/merge), so
+#    neither cancelled the other and every push ran the suite twice.
+#  - A merge to main ran the suite here and again in deploy.yml, which verifies
+#    the commit itself before it ships. That one is the gate on main.
+#
+# The cost: a branch gets no CI until it has a pull request. Open a draft, or
+# start a run by hand from the Actions tab.
 on:
-  push:
-    branches: ['**']
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
-# Cancel superseded runs on the same branch; the latest push is the one that matters.
+# Cancel superseded runs on the same pull request; the latest push is the one
+# that matters.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -54,18 +67,3 @@ jobs:
 
       - name: Build web bundle
         run: npm run bundle --workspace web
-
-  validate-infra:
-    name: Validate Bicep
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - uses: actions/checkout@v4
-
-      # Catches template errors on every push rather than at deploy time, when
-      # the feedback loop is a failed deployment.
-      - name: Build and lint Bicep
-        run: |
-          az bicep install
-          az bicep build --file infra/main.bicep --outfile /tmp/main.json
