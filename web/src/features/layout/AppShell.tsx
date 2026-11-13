@@ -4,6 +4,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { IconButton } from '../../components/Button.js';
 import { CheckIcon, CollapseIcon, MenuIcon, PlusIcon, SearchIcon } from '../../components/icons.js';
 import type { TaskFilter } from '../../lib/apiClient.js';
+import { readSelection, resolveSelection, writeSelection } from '../../lib/lastSelection.js';
+import { useLists } from '../../lib/queries.js';
 import { searchShortcutLabel } from '../../lib/shortcutLabel.js';
 import { useIsDesktop } from '../../lib/useMediaQuery.js';
 import { useKeyboardShortcuts } from '../../lib/useKeyboardShortcuts.js';
@@ -42,7 +44,22 @@ export function AppShell() {
   const navigate = useNavigate();
   const params = useParams<{ taskId?: string }>();
 
-  const [selection, setSelection] = useState<ListSelection>({ kind: 'all' });
+  /*
+    The section is remembered across reloads (lastSelection.ts).
+
+    What is *stored* is what the user picked; what is *shown* is that checked
+    against the lists that exist, so a list deleted elsewhere falls back to
+    "all" instead of opening as an empty page. Reading the lists here costs no
+    extra request — the panel already asks for them, and the cache is shared.
+  */
+  const [chosen, setChosen] = useState<ListSelection>(readSelection);
+  const lists = useLists();
+  const listIds = useMemo(() => lists.data?.data.map((list) => list.id), [lists.data]);
+  const selection = useMemo(() => resolveSelection(chosen, listIds), [chosen, listIds]);
+  const setSelection = useCallback((next: ListSelection) => {
+    setChosen(next);
+    writeSelection(next);
+  }, []);
   const [collapsed, setCollapsed] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [search, setSearch] = useState('');
